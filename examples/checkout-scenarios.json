@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "activeScenarioId": "checkout",
+  "settings": {
+    "bypassServiceWorker": true
+  },
+  "scenarios": [
+    {
+      "id": "checkout",
+      "name": "Demo · Checkout",
+      "rules": [
+        {
+          "enabled": true,
+          "method": "POST",
+          "url": "http://127.0.0.1:4319/api/coupon",
+          "resource": "api",
+          "id": "expired",
+          "name": "Expired coupon",
+          "requestBody": {
+            "coupon": "EXPIRED"
+          },
+          "response": {
+            "kind": "json",
+            "status": 422,
+            "body": {
+              "code": "COUPON_EXPIRED",
+              "message": "This coupon has expired."
+            },
+            "delayMs": 350,
+            "headers": {},
+            "cors": false
+          }
+        },
+        {
+          "enabled": true,
+          "method": "GET",
+          "url": "http://127.0.0.1:4319/api/cart",
+          "resource": "api",
+          "id": "filled",
+          "name": "Cart with items",
+          "response": {
+            "kind": "json",
+            "status": 200,
+            "body": {
+              "items": [
+                {
+                  "id": "mock-1",
+                  "name": "Canvas tote",
+                  "quantity": 2
+                }
+              ],
+              "total": 24
+            },
+            "delayMs": 0,
+            "headers": {},
+            "cors": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "empty",
+      "name": "Demo · Empty cart",
+      "rules": [
+        {
+          "enabled": true,
+          "method": "GET",
+          "url": "http://127.0.0.1:4319/api/cart",
+          "resource": "api",
+          "id": "no-items",
+          "name": "Empty cart",
+          "response": {
+            "kind": "json",
+            "status": 200,
+            "body": {
+              "items": [],
+              "total": 0
+            },
+            "delayMs": 250,
+            "headers": {},
+            "cors": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "offline",
+      "name": "Demo · Offline",
+      "rules": [
+        {
+          "enabled": true,
+          "method": "GET",
+          "url": "http://127.0.0.1:4319/api/cart",
+          "resource": "api",
+          "id": "network",
+          "name": "Disconnected cart",
+          "response": {
+            "kind": "error",
+            "error": "InternetDisconnected",
+            "delayMs": 600
+          }
+        }
+      ]
+    }
+  ]
+}

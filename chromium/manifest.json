@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Mockend",
+  "short_name": "Mockend",
+  "description": "Test browser behavior with reusable JSON API mocks, payload matching, and simulated network failures.",
+  "version": "1.4.36",
+  "minimum_chrome_version": "125",
+  "permissions": ["debugger", "storage", "tabs", "sidePanel", "clipboardWrite"],
+  "background": { "service_worker": "chromium/background.js", "type": "module" },
+  "action": {
+    "default_title": "Open Mockend",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png" }
+  },
+  "commands": {
+    "open-mockend": {
+      "suggested_key": { "default": "Ctrl+Shift+M", "mac": "MacCtrl+Shift+M" },
+      "description": "Toggle Mockend"
+    },
+    "toggle-mockend-fallback": {
+      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "MacCtrl+Shift+Y" },
+      "description": "Toggle Mockend (alternate shortcut)"
+    }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "side_panel": { "default_path": "panel.html" }
+}

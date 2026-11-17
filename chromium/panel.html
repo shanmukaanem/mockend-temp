@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en" data-host="chromium">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self';">
+  <title>Mockend</title>
+  <link rel="stylesheet" href="ui/styles.css">
+  <link rel="stylesheet" href="chromium/requests.css">
+</head>
+<body>
+  <header class="request-toolbar">
+    <div class="request-brand"><span class="brand-mark" aria-hidden="true"></span><h1>Mockend</h1></div>
+    <div class="capture-controls">
+      <span id="recording-state" role="status" class="sr-only">Starting recording…</span>
+      <button class="secondary" id="record-toggle" type="button" aria-describedby="recording-state" disabled>Start recording</button>
+      <span id="capture-live" role="status" class="sr-only">Mocking off</span>
+      <button id="toggle" class="secondary" type="button" aria-describedby="capture-live" disabled>Start mocking</button>
+    </div>
+    <button id="open-tab" class="secondary toolbar-icon" type="button" aria-label="Open Mockend in new tab" title="Open Mockend in new tab" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 4h7v7m0-7-9 9m-2-8H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg></button>
+  </header>
+  <header class="masthead">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><div><h1>Mockend</h1><p>API response testing</p></div></div>
+    <span id="status" class="badge status"><span></span><b>Idle</b></span>
+  </header>
+
+  <div class="workspace-bar">
+    <section class="target" aria-labelledby="target-label">
+      <div class="target-info">
+        <h2 id="target-label" class="sr-only">Test browser</h2>
+        <div id="target-summary">
+          <strong id="target-title">Finding your browser tab</strong>
+          <span id="target-url" class="mono"></span>
+        </div>
+        <label id="app-field" hidden>App URL
+          <input id="app-url" type="url" placeholder="http://localhost:3000/" autocomplete="url">
+        </label>
+      </div>
+      
+      <p class="target-notice" id="connection-notice" hidden></p>
+    </section>
+    <nav class="tabs workspace-tabs" aria-label="Mockend views">
+      <button type="button" data-view="requests" aria-current="page">Requests</button>
+      <button type="button" data-view="rules">Rules</button>
+      
+      <button type="button" data-view="settings">Settings</button>
+    </nav>
+  </div>
+
+  
+  <section id="requests-view" aria-labelledby="capture-title">
+    <div class="request-heading">
+      <div><h2 id="capture-title">Requests</h2><span class="section-count" id="request-count" aria-live="polite"></span></div>
+      <div class="request-heading-actions">
+      <button class="secondary base-url-toggle" id="base-url-toggle" type="button" popovertarget="base-url-menu" data-tooltip="Limit requests to the selected base URLs"><span>Current Base URL</span><small></small></button><div id="base-url-menu" class="base-url-menu" popover aria-label="Base URLs"><div class="base-url-menu-tools"><label data-url="*"><input type="checkbox">Select all</label></div><div id="base-url-options"></div></div>
+      <button class="secondary" id="clear-requests" type="button" disabled>Clear</button>
+      <div class="split-actions">
+        <button class="secondary toolbar-icon" id="export-postman" type="button" aria-label="Export Collection" title="Export collection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M4 16v4h16v-4"/></svg></button>
+        <button class="secondary toolbar-icon" id="copy-postman" type="button" aria-label="Copy Collection" title="Copy collection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg><span id="copy-postman-label" class="sr-only">Copy</span></button>
+      </div>
+      </div>
+    </div>
+    <div class="request-filters">
+      <div class="search-control"><label class="request-search"><span class="sr-only">Search requests and responses</span><input id="request-query" type="search" placeholder="Search requests and responses" aria-describedby="request-query-error" autocomplete="off"></label><button class="icon remove-filter search-clear" type="button" aria-label="Clear request search" title="Clear request search" disabled></button></div>
+      <button class="secondary" id="regex-toggle" type="button" aria-pressed="false" aria-label="Regex search" title="Regex search">.*</button>
+      <button class="secondary" id="url-only-toggle" data-tooltip="Search request URLs only" type="button" aria-pressed="false" aria-label="Search URLs only" title="Search URLs only">URL</button>
+      <button class="secondary" id="filter-toggle" type="button" aria-controls="request-filter-tree" aria-expanded="false">Filters<span id="filter-count" hidden></span></button>
+      <button class="primary" id="mock-scenario" data-tooltip="Create a scenario from the latest captured response for each API" type="button" disabled>Mock Scenario</button>
+      <div id="request-filter-tree" class="request-filter-tree" role="group" aria-label="Request filters" hidden>
+        <div class="filter-panel-tools">
+          <div class="search-control"><label><span class="sr-only">Search filter options</span><input id="filter-options-query" type="search" placeholder="Find a filter option" autocomplete="off"></label><button class="icon remove-filter search-clear" type="button" aria-label="Clear filter search" title="Clear filter search" disabled></button></div>
+          <label class="filter-select-all"><input id="select-all-filters" type="checkbox" aria-label="Select all filters"><span>Select all</span></label>
+        </div>
+        <div id="applied-filters" class="applied-filters">
+          <div id="filter-chips" role="region" aria-label="Applied filter pills" tabindex="-1"></div>
+          <button class="secondary" id="clear-filters" type="button" disabled>Clear filters</button>
+        </div>
+        <div id="request-facets" class="request-facets"></div>
+        <p id="filter-options-empty" hidden>No matching filter options.</p>
+      </div>
+    </div>
+    <p id="request-search-progress" class="sr-only" role="status" hidden>Searching recorded response bodies.</p>
+    <p id="request-query-error" class="feedback error" role="status" hidden></p>
+    <p id="postman-status" role="status" hidden></p>
+    <p id="capture-status" role="status" hidden></p>
+    <div class="request-table" tabindex="0" role="region" aria-label="Captured requests table">
+      <table>
+        <thead><tr><th scope="col" class="request-id-column"><button type="button" data-sort="id">ID<span aria-hidden="true"></span></button></th><th scope="col" class="request-method-column"><button type="button" data-sort="method">Method<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-sort="endpoint">Endpoint<span aria-hidden="true"></span></button></th><th scope="col" class="request-type-column"><button type="button" data-sort="type">Type<span aria-hidden="true"></span></button></th><th scope="col" class="request-status-column"><button type="button" data-sort="status">Status<span aria-hidden="true"></span></button></th><th scope="col" class="request-actions-column">Actions</th></tr></thead>
+        <tbody id="request-rows"></tbody>
+      </table>
+      <p id="request-empty" class="request-empty" role="status">Trigger a request or reload the app to capture startup traffic.</p>
+    </div>
+  </section>
+  <div id="request-actions" popover aria-label="Request filters"><div id="request-add-filters"></div></div>
+
+  <dialog id="request-details" closedby="any" aria-labelledby="request-details-title">
+    <form method="dialog">
+      <div class="dialog-head"><div><h2 id="request-details-title">Request details</h2><div class="request-detail-badges"><span id="request-detail-method" class="method-badge mono"></span><span id="request-detail-type" class="type-badge"></span><span id="request-detail-mock" class="type-badge mock-badge" hidden>Mocked</span><span id="request-detail-status" class="request-code mono"></span></div><p id="request-detail-url" class="mono"></p><p id="request-detail-outcome" hidden></p><button id="request-detail-rule" class="mock-rule-link" type="button" hidden></button></div><button class="icon close" type="button" aria-label="Close request details"></button></div>
+      <div class="dialog-body">
+        <section id="response-detail-section" class="preview-section">
+          <h3>Response body</h3>
+          <pre id="response-detail-body" class="mono" tabindex="0" aria-label="Response body"></pre>
+        </section>
+        <section id="request-detail-section" class="preview-section">
+          <h3>Request body</h3>
+          <pre id="request-detail-body" class="mono" tabindex="0" aria-label="Request body"></pre>
+        </section>
+      </div>
+    </form>
+  </dialog>
+<main hidden>
+
+    <section id="rules-view" aria-labelledby="rules-title">
+      <div class="scenario-tools">
+        <div class="scenario-caption"><h2 id="scenario-label" class="section-title">Active scenario</h2><span id="scenario-status" role="status"></span></div>
+        <div class="scenario-toolbar" id="scenario-toolbar">
+          <div class="scenario-picker">
+            <button class="secondary" id="scenario" type="button" aria-labelledby="scenario-label scenario-name" popovertarget="scenario-menu" aria-controls="scenario-menu" aria-expanded="false" disabled><span id="scenario-name">Loading…</span></button>
+            <div id="scenario-menu" popover aria-label="Scenarios">
+              <div id="scenario-options" role="group" aria-label="Choose a scenario"></div>
+            </div>
+          </div>
+          <button class="secondary toolbar-icon" id="new-scenario" type="button" aria-label="New scenario" title="New scenario" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+          <div class="split-actions" role="group" aria-label="Import rules JSON">
+            <button class="secondary toolbar-icon" id="paste-rules" type="button" aria-label="Paste rules JSON" title="Paste rules JSON" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H5v16h14V5h-3m-7 7-2 2 2 2m6-4 2 2-2 2"/></svg></button>
+          <button class="secondary toolbar-icon" id="import" type="button" aria-label="Import rules JSON from file" title="Import rules JSON from file" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg></button>
+          </div>
+          <div class="split-actions">
+          <button class="secondary toolbar-icon" id="export" type="button" aria-label="Export scenarios" title="Export scenario backup" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M4 16v4h16v-4"/></svg></button>
+          <button class="secondary toolbar-icon" id="copy-scenarios" type="button" aria-label="Copy scenarios" title="Copy scenarios" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg></button>
+          </div>
+        </div>
+        <form id="scenario-form" class="scenario-form" hidden>
+          <input name="name" aria-labelledby="scenario-label" required maxlength="100">
+          <button class="secondary" id="cancel-scenario" type="button">Cancel</button>
+          <button class="primary" type="submit">Save</button>
+        </form>
+        <div id="postman-mocks-tools" class="postman-mocks-tools" hidden>
+          <span>Postman Mocks</span>
+          <div class="split-actions" role="group" aria-label="Postman Mocks export">
+          <button class="secondary toolbar-icon" id="export-postman-mock" type="button" aria-label="Export Postman mock" title="Export Postman mock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M4 16v4h16v-4"/></svg></button>
+          <button class="secondary toolbar-icon" id="copy-postman-mock" type="button" aria-label="Copy Postman mock" title="Copy Postman mock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg></button>
+          </div>
+          <div class="split-actions" role="group" aria-label="Postman Mocks import">
+          <button class="secondary toolbar-icon" id="import-postman-mock" type="button" aria-label="Import Postman mock" title="Import Postman mock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg></button>
+          <button class="secondary toolbar-icon" id="paste-postman-mock" type="button" aria-label="Paste Postman mock" title="Paste Postman mock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H5v16h14V5h-3m-7 7-2 2 2 2m6-4 2 2-2 2"/></svg></button>
+          </div>
+          <input id="postman-mock-file" type="file" accept=".js,.cjs,.json" hidden>
+        </div>
+        <p id="scenario-error" class="feedback error" role="alert" hidden></p>
+        <span id="scenario-file-status" role="status" aria-atomic="true"></span>
+        <input type="file" id="import-file" accept=".json,.js,.cjs,application/json" hidden>
+      </div>
+      <div class="section-head rules-head">
+        <div class="section-title-line"><h2 id="rules-title" class="section-title">Rules</h2><span id="rule-count" class="section-count"></span></div>
+        <button class="secondary" id="group-rules" type="button" aria-pressed="false">Group by API</button>
+        <button class="secondary" id="clear-rules" type="button" disabled>Clear</button>
+        <button class="primary" id="add-rule" type="button" disabled>+ Add rule</button>
+      </div>
+      <ul id="rules" class="rule-list" aria-label="Rules in matching order"></ul>
+      <div class="empty" id="no-rules" hidden>
+        <h3 id="empty-rules-title">No rules for this site</h3>
+        <p>Add a URL and JSON response to start testing.</p>
+      </div>
+    </section>
+
+    <section id="activity-view" aria-label="Request activity" hidden>
+      <div class="section-head rules-head">
+        <div><div class="section-title-line"><h2 class="section-title">Request activity</h2><span id="activity-count" class="section-count"></span></div><p>Recent mocks and upstream Fetch/XHR results.</p></div>
+        <button id="clear-activity" class="secondary" type="button">Clear</button>
+      </div>
+      <div class="empty" id="no-activity"><h3>No requests yet</h3><p>Start mocking, then reload or interact with your app.</p></div>
+      <ul id="activity" class="activity-list" aria-label="Recent requests"></ul>
+    </section>
+
+    <section id="settings-view" aria-labelledby="settings-title" hidden>
+      <h2 id="settings-title" class="section-title">Settings</h2>
+      <section id="browser-shortcut-settings" class="settings-group" aria-labelledby="browser-shortcut-title" hidden>
+        <h3 id="browser-shortcut-title">Open Mockend shortcut</h3>
+        <p><kbd id="browser-shortcut"></kbd></p>
+        <button id="manage-browser-shortcut" class="secondary" type="button">Manage browser shortcuts</button>
+      </section>
+      <section class="settings-group" aria-labelledby="mocking-settings-title">
+        <h3 id="mocking-settings-title">Mocking</h3>
+        <label class="check"><input type="checkbox" id="bypass" disabled><span><strong>Bypass app service workers</strong><small>Use this when a service worker serves responses from its cache. Takes effect the next time you start mocking.</small></span></label>
+        <p id="mocking-settings-status" role="status" aria-atomic="true"></p>
+      </section>
+    </section>
+  </main>
+
+    <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+
+  <output id="zoom-status" class="sr-only" aria-live="polite"></output>
+
+  <dialog id="rule-dialog" closedby="closerequest" aria-labelledby="rule-title">
+    <form id="rule-form" novalidate>
+      <div class="dialog-head rule-superheader">
+        <h2 id="rule-title">Add rule</h2>
+        <span class="rule-header-divider" aria-hidden="true"></span>
+        <label class="sr-only" for="rule-name">Rule name</label>
+        <input id="rule-name" name="name" maxlength="100" required placeholder="Request name">
+        <label class="rule-name-pencil" for="rule-name" title="Edit request name"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 10-.75 3.75L6 13 13 6 10 3l-7 7Zm5.5-5.5 3 3"/></svg></label>
+        <span id="rule-scenario-name" class="rule-scenario-name"></span>
+      </div>
+      <div class="rule-route">
+        <div class="route-fields">
+          <div><label class="sr-only" for="rule-method">Method</label><select id="rule-method" name="method"><button type="button"><selectedcontent></selectedcontent></button></select></div>
+          <div><label class="sr-only" for="rule-url">Request URL</label><input id="rule-url" name="url" required maxlength="2048" class="mono" placeholder="https://api.example.com/cart/*" spellcheck="false"></div>
+          <label><span class="sr-only">URL matching</span><select name="urlMode" aria-describedby="url-match-help"><button type="button"><selectedcontent></selectedcontent></button><option value="pattern">Pattern</option><option value="exact">Exact URL + query</option><option value="endpoint">Endpoint only</option></select></label>
+          <label><span class="sr-only">Request type</span><select name="resource"><button type="button"><selectedcontent></selectedcontent></button><option value="api">Fetch/XHR</option><option value="any">Any HTTP request</option></select></label>
+        </div>
+        <small id="url-match-help"></small>
+      </div>
+      <div class="tabs workspace-tabs" id="rule-tabs" role="tablist" aria-label="Mock rule sections">
+        <button id="rule-response-tab" type="button" role="tab" aria-selected="true" aria-controls="response-section">Response</button>
+        <button id="rule-request-tab" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="request-json-section">Request</button>
+        <button id="rule-headers-tab" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="http-options">Headers &amp; CORS</button>
+      </div>
+      <div class="dialog-body">
+        <section id="response-section" class="rule-section" role="tabpanel" aria-labelledby="rule-response-tab">
+          <p id="captured-response-notice" class="capture-response-notice" hidden></p>
+          <div class="field-heading">
+            <div class="response-controls">
+              <label><span class="sr-only">Response type</span><select name="kind"><button type="button"><selectedcontent></selectedcontent></button><option value="json">JSON response</option><option value="text">Text response</option><option value="error">Network error</option></select></label>
+              <div id="status-field"><label for="response-status">HTTP status</label><input id="response-status" name="status" type="number" min="100" max="999" step="1"></div>
+              <label id="error-field" hidden>Failure <select name="error"><button type="button"><selectedcontent></selectedcontent></button></select></label>
+              <div><label for="response-delay">Delay (ms)</label><input id="response-delay" name="delayMs" type="number" min="0" max="30000" step="1" required></div>
+            </div>
+          </div>
+          <div id="body-field"><label id="body-label" class="sr-only" for="response-body">Response JSON</label><textarea id="response-body" name="body" class="mono" rows="6" spellcheck="false"></textarea></div>
+        </section>
+        <section id="request-json-section" class="rule-section" role="tabpanel" aria-labelledby="rule-request-tab" hidden>
+          <div class="field-heading">
+            <div class="choice-group" role="radiogroup" aria-label="JSON matching">
+              <label><input type="radio" name="requestBodyMode" value="parameters" checked>Parameters</label>
+              <label><input type="radio" name="requestBodyMode" value="exact">Exact JSON</label>
+              <label id="legacy-body-mode" hidden><input type="radio" name="requestBodyMode" value="subset">Saved JSON match</label>
+            </div>
+          </div>
+          <div id="parameter-editor">
+            <small>Match values in the query string or JSON body. AND requires both conditions. OR starts an alternative group.</small>
+            <details id="parameter-example-panel">
+              <summary>Example request JSON</summary>
+              <small>Paste JSON to populate the field picker.</small>
+              <label class="sr-only" for="parameter-example">Example request JSON</label>
+              <textarea id="parameter-example" name="parameterExample" class="mono" rows="4" spellcheck="false" placeholder='{"customer":{"id":7}}'></textarea>
+              <p id="parameter-example-error" role="status" hidden></p>
+            </details>
+            <div id="parameter-rows"></div>
+            <button id="add-parameter" class="secondary" type="button">+ Add parameter</button>
+            <p id="parameter-error" class="error" role="status" hidden></p>
+          </div>
+          <div id="request-json-editor" hidden>
+            <small id="json-help">Compare the full JSON body. Leave empty to match any body.</small>
+            <label class="sr-only" for="request-json">Request JSON</label>
+            <textarea id="request-json" name="requestBody" class="mono" rows="4" aria-describedby="json-help" spellcheck="false" placeholder="Request JSON"></textarea>
+          </div>
+        </section>
+        <section id="http-options" class="rule-section" role="tabpanel" aria-labelledby="rule-headers-tab" hidden>
+          <label for="response-headers">Response headers</label><textarea id="response-headers" name="headers" class="mono" rows="3" spellcheck="false" placeholder='{"x-test-case":"checkout"}'></textarea><small>JSON object with string values.</small>
+          <label class="check"><input type="checkbox" name="cors"><span><strong>Allow requesting origin on this mock</strong><small>Reflect the browser’s Origin for this rule. Leave off to test your own CORS headers.</small></span></label>
+        </section>
+      </div>
+      <div class="dialog-foot">
+        <p id="rule-error" class="feedback error" role="alert" hidden></p>
+        <div class="spacer"></div><button class="secondary close" type="button">Cancel</button><button class="primary" id="save-rule" type="submit" disabled>Save rule</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="paste-postman-mock-dialog" closedby="closerequest" aria-labelledby="paste-postman-mock-title">
+    <form id="paste-postman-mock-form">
+      <div class="dialog-head"><h2 id="paste-postman-mock-title">Paste Postman mock</h2></div>
+      <div class="dialog-body">
+        <label for="pasted-postman-mock">Mockend-exported script or Postman collection JSON</label>
+        <textarea id="pasted-postman-mock" class="mono" rows="6" spellcheck="false" required></textarea>
+        <p id="paste-postman-mock-error" class="feedback error" role="alert" hidden></p>
+      </div>
+      <div class="dialog-foot"><div class="spacer"></div><button class="secondary close" type="button">Cancel</button><button class="primary" type="submit">Import</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="paste-rules-dialog" aria-labelledby="paste-rules-title">
+    <form id="paste-rules-form">
+      <div class="dialog-head"><h2 id="paste-rules-title">Paste rules JSON</h2></div>
+      <div class="dialog-body">
+        <label class="sr-only" for="pasted-rules-json">Rules JSON</label>
+        <textarea id="pasted-rules-json" rows="6" spellcheck="false" required autofocus></textarea>
+        <p id="paste-rules-error" class="feedback error" role="alert" hidden></p>
+      </div>
+      <div class="dialog-foot"><button class="secondary close" type="button">Cancel</button><button class="primary" type="submit">Import</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <div class="dialog-head"><div><h2 id="confirm-title"></h2><p id="confirm-text"></p></div></div>
+    <form method="dialog" class="dialog-foot"><button class="secondary" value="cancel" autofocus>Cancel</button><button class="primary" value="confirm" id="confirm-action"></button></form>
+  </dialog>
+
+  <script type="module" src="ui/panel.js"></script>
+</body>
+</html>

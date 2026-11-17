@@ -1,0 +1,28 @@
+{
+  "name": "mockroute",
+  "displayName": "Mockend",
+  "description": "Test browser behavior with reusable JSON API mocks in the VS Code Integrated Browser.",
+  "publisher": "mockroute-local",
+  "version": "1.4.36",
+  "engines": { "vscode": "^1.112.0" },
+  "categories": ["Testing"],
+  "icon": "icons/128.png",
+  "main": "./vscode/extension.cjs",
+  "extensionKind": ["ui"],
+  "capabilities": {
+    "virtualWorkspaces": { "supported": false },
+    "untrustedWorkspaces": { "supported": false }
+  },
+  "contributes": {
+    "commands": [
+      { "command": "mockroute.open", "title": "Mockend: Open" },
+      { "command": "mockroute.stop", "title": "Mockend: Stop Mocking" }
+    ],
+    "viewsContainers": {
+      "activitybar": [{ "id": "mockroute", "title": "Mockend", "icon": "icons/activity.png" }]
+    },
+    "views": {
+      "mockroute": [{ "type": "webview", "id": "mockroute.control", "name": "API Testing" }]
+    }
+  }
+}
