@@ -78,7 +78,8 @@ export class Controller {
         break;
       }
       case 'stop':
-        await this.platform.stop();
+        if (data.keepBrowser && this.platform.stopMocking) await this.platform.stopMocking();
+        else await this.platform.stop();
         this.message = '';
         break;
       case 'clear':

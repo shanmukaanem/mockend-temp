@@ -15,3 +15,11 @@ export async function saveFile(filename, contents, type = 'application/json') {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+export async function connectRecording(onMessage, onDisconnect) {
+  windowId ??= (await chrome.windows.getCurrent()).id;
+  const port = chrome.runtime.connect({ name: 'mockroute-recording' });
+  port.onMessage.addListener(onMessage);
+  port.onDisconnect.addListener(onDisconnect);
+  return { postMessage: message => port.postMessage({ ...message, windowId }) };
+}

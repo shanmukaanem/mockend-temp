@@ -19,11 +19,6 @@
     </div>
     <button id="open-tab" class="secondary toolbar-icon" type="button" aria-label="Open Mockend in new tab" title="Open Mockend in new tab" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 4h7v7m0-7-9 9m-2-8H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg></button>
   </header>
-  <header class="masthead">
-    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><div><h1>Mockend</h1><p>API response testing</p></div></div>
-    <span id="status" class="badge status"><span></span><b>Idle</b></span>
-  </header>
-
   <div class="workspace-bar">
     <section class="target" aria-labelledby="target-label">
       <div class="target-info">
@@ -33,16 +28,14 @@
           <span id="target-url" class="mono"></span>
         </div>
         <label id="app-field" hidden>App URL
-          <input id="app-url" type="url" placeholder="http://localhost:3000/" autocomplete="url">
+          <input id="app-url" type="text" inputmode="url" placeholder="example.com or localhost:3000" autocomplete="url">
         </label>
       </div>
-      
       <p class="target-notice" id="connection-notice" hidden></p>
     </section>
     <nav class="tabs workspace-tabs" aria-label="Mockend views">
       <button type="button" data-view="requests" aria-current="page">Requests</button>
       <button type="button" data-view="rules">Rules</button>
-      
       <button type="button" data-view="settings">Settings</button>
     </nav>
   </div>
@@ -162,15 +155,6 @@
         <h3 id="empty-rules-title">No rules for this site</h3>
         <p>Add a URL and JSON response to start testing.</p>
       </div>
-    </section>
-
-    <section id="activity-view" aria-label="Request activity" hidden>
-      <div class="section-head rules-head">
-        <div><div class="section-title-line"><h2 class="section-title">Request activity</h2><span id="activity-count" class="section-count"></span></div><p>Recent mocks and upstream Fetch/XHR results.</p></div>
-        <button id="clear-activity" class="secondary" type="button">Clear</button>
-      </div>
-      <div class="empty" id="no-activity"><h3>No requests yet</h3><p>Start mocking, then reload or interact with your app.</p></div>
-      <ul id="activity" class="activity-list" aria-label="Recent requests"></ul>
     </section>
 
     <section id="settings-view" aria-labelledby="settings-title" hidden>

@@ -3,7 +3,7 @@ import { HTTP_METHODS, MAX_CONFIG_BYTES, MAX_RESPONSE_BYTES, NETWORK_ERRORS, RES
 import { logUrl } from '../core/matcher.js';
 
 const browser = document.documentElement.dataset.host === 'chromium';
-const { request, openFile, saveFile } = await import(browser ? '../chromium/bridge.js' : '../vscode/bridge.js');
+const { request, openFile, saveFile, connectRecording, copyToClipboard } = await import(browser ? '../chromium/bridge.js' : '../vscode/bridge.js');
 
 const $ = id => document.getElementById(id);
 const activeScenario = config => config.scenarios.find(scenario => scenario.id === config.activeScenarioId);
@@ -13,14 +13,13 @@ const makeId = () => crypto.randomUUID();
 
 let state;
 let feedbackTimer;
-let view = browser ? 'requests' : 'rules';
+let view = 'requests';
 let scenarioFeedbackTimer;
 const settingsTimers = new Map();
 let busy = false;
 let epoch = 0;
 let ruleDraft;
 let scenarioDraft;
-let renderedActivity;
 let refreshing;
 let groupRules = false;
 try { groupRules = localStorage.getItem('mockend.group-rules') === 'true'; } catch { /* Use the list initially. */ }
@@ -67,20 +66,15 @@ function renderConnection() {
     document.documentElement.classList.toggle('standalone', openTab.hidden);
     openTab.disabled = !connection?.available || busy;
   }
-  const status = $('status');
-  status.classList.toggle('live', Boolean(active));
-  status.querySelector('b').textContent = active ? 'Mocking' : 'Idle';
-  $('app-field').hidden = browser || Boolean(active);
-  $('target-summary').hidden = !browser && !active;
+  $('app-field').hidden = browser || Boolean(current);
+  $('target-summary').hidden = !browser && !current;
   $('target-title').textContent = current?.title ?? 'Select an HTTP(S) tab';
   $('target-url').textContent = current?.url ? logUrl(current.url) : 'Open your app to begin.';
-  $('toggle').textContent = active ? 'Stop mocking' : browser ? 'Start mocking' : 'Open test browser';
+  $('toggle').textContent = active ? 'Stop mocking' : 'Start mocking';
   $('toggle').disabled = busy || !connection || (browser && !current);
   message('connection-notice', connection?.notice || state?.message);
-  if (browser) {
-    $('toggle').dataset.state = active ? 'recording' : 'stopped';
-    $('capture-live').textContent = active ? 'Mocking active' : 'Mocking off';
-  }
+  $('toggle').dataset.state = active ? 'recording' : 'stopped';
+  $('capture-live').textContent = active ? 'Mocking active' : 'Mocking off';
 }
 
 function renderConfig() {
@@ -109,7 +103,7 @@ function renderConfig() {
 }
 
 function currentSite(connection = state?.connection) {
-  try { return new URL((browser ? connection?.available : connection?.active)?.url).hostname; }
+  try { return new URL((connection?.available ?? connection?.active)?.url).hostname; }
   catch { return ''; }
 }
 
@@ -221,45 +215,11 @@ function restoreFocus(key) {
   else node?.closest('.rule')?.querySelector('.rule-main')?.focus();
 }
 
-function renderActivity() {
-  if (browser) return;
-  const activity = state?.activity ?? [];
-  const count = activity.filter(row => row.outcome === 'Mocked' || row.outcome === 'Network error').length;
-  $('hit-count').hidden = count === 0;
-  $('hit-count').textContent = count;
-  if (view !== 'activity') return;
-  $('activity-count').textContent = `(${activity.length})`;
-  const serialized = JSON.stringify(activity);
-  if (renderedActivity === serialized) return;
-  renderedActivity = serialized;
-  $('no-activity').hidden = activity.length > 0;
-  $('activity').replaceChildren(...activity.map(row => {
-    const item = element('li', 'activity-row');
-    const line = element('div', 'line');
-    const forwarded = row.outcome === 'Passed through';
-    const unknownStatus = forwarded && !row.status;
-    const failure = row.outcome.includes('error') || row.outcome.includes('failed') || (forwarded && row.status >= 400);
-    const tone = failure ? ' failure' : unknownStatus || row.outcome === 'Request canceled' ? ' neutral' : '';
-    const status = forwarded && row.status ? `HTTP ${row.status}` : row.status;
-    const label = unknownStatus ? 'Forwarded · Status unavailable' : [row.outcome, status].filter(Boolean).join(' · ');
-    const outcome = element('span', `outcome${tone}`, label);
-    const time = element('time', '', new Date(row.time).toLocaleTimeString());
-    time.dateTime = new Date(row.time).toISOString();
-    line.append(outcome, time);
-    item.append(line, element('p', 'mono', `${row.method} ${row.url}`));
-    if (row.rule) item.append(element('p', '', row.rule));
-    const detail = [row.mimeType, row.error].filter(Boolean).join(' · ');
-    if (detail) item.append(element('p', '', detail));
-    return item;
-  }));
-}
-
 function update(next) {
   const changed = state?.revision !== next.revision;
   state = { ...state, ...next };
   renderConnection();
   if (changed) renderConfig();
-  renderActivity();
 }
 
 async function refresh(force = false) {
@@ -313,7 +273,7 @@ async function save(change, feedback = 'feedback', base = state?.revision) {
 const viewTabs = [...document.querySelectorAll('[data-view]')];
 
 function chooseView(selected) {
-  if (!viewTabs.some(tab => tab.dataset.view === selected)) selected = browser ? 'requests' : 'rules';
+  if (!viewTabs.some(tab => tab.dataset.view === selected)) selected = 'requests';
   if (view === selected) return;
   const direction = viewTabs.findIndex(tab => tab.dataset.view === selected)
     > viewTabs.findIndex(tab => tab.dataset.view === view) ? 1 : -1;
@@ -330,7 +290,6 @@ function chooseView(selected) {
     pane.hidden = !current;
   }
   document.dispatchEvent(new Event('mockend-view-changed'));
-  renderActivity();
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
     $(`${selected}-view`).animate([
       { opacity: .55, transform: `translateX(${direction * 12}px)` },
@@ -414,11 +373,16 @@ function showResponseFields() {
   field(form, 'body').placeholder = $('body-label').textContent;
 }
 
+function shouldStartMocking(draft) {
+  return browser ? Number.isInteger(draft.tab?.id) && state.connection.active?.id !== draft.tab.id
+    : Boolean(draft.tab?.url) && !state.connection.active;
+}
+
 function editRule(rule, captured, tab, scenarioId = state?.config.activeScenarioId) {
   if (busy || !state) return;
   const form = $('rule-form');
-  ruleDraft = { id: rule?.id, revision: state.revision, captured: Boolean(captured), tabId: tab?.id, scenarioId };
-  const startOnSave = Number.isInteger(ruleDraft.tabId) && state.connection.active?.id !== ruleDraft.tabId;
+  ruleDraft = { id: rule?.id, revision: state.revision, captured: Boolean(captured), tab, scenarioId };
+  const startOnSave = shouldStartMocking(ruleDraft);
   $('save-rule').textContent = startOnSave ? 'Save and start mocking' : 'Save rule';
   rule ??= captured?.rule;
   if (captured) {
@@ -844,8 +808,9 @@ async function submitRule(event) {
     }, 'rule-error', draft.revision);
     if (saved) {
       $('rule-dialog').close();
-      if (Number.isInteger(draft.tabId) && state.connection.active?.id !== draft.tabId) {
-        const started = await run('start', { tabId: draft.tabId }, 'feedback', 'Rule saved. Mocking could not start. ');
+      if (shouldStartMocking(draft)) {
+        const target = browser ? { tabId: draft.tab.id } : { url: draft.tab.url };
+        const started = await run('start', target, 'feedback', 'Rule saved. Mocking could not start. ');
         if (started) message('feedback', 'Rule saved. Mocking is active. Retry the request.');
       } else {
         message('feedback', 'Rule saved.');
@@ -933,7 +898,7 @@ function settingsFeedback(id, content = '', error = false) {
 async function importConfig(contents, pasteDialog) {
   const feedback = 'scenario-file-status';
   try {
-    if (browser && /(?:const mockendScenario\s*=|schema\.getpostman\.com\/json\/collection\/v2\.)/.test(contents)) {
+    if (/(?:const mockendScenario\s*=|schema\.getpostman\.com\/json\/collection\/v2\.)/.test(contents)) {
       const { readPostmanMock } = await import('../chromium/postman-mock.js');
       const { name, rules } = readPostmanMock(contents, state.connection.available?.url);
       pasteDialog?.close();
@@ -1134,11 +1099,11 @@ $('bypass').addEventListener('change', async event => {
 $('toggle').addEventListener('click', async () => {
   if (!state || busy) return;
   if (state.connection.active) {
-    if (await run('stop')) message('feedback', 'Mocking stopped.');
+    if (await run('stop', browser ? undefined : { keepBrowser: true })) message('feedback', 'Mocking stopped.');
   } else {
     const data = browser ? { tabId: state.connection.available?.id } : { url: $('app-url').value };
     const starting = run('start', data);
-    message('feedback', browser ? 'Attaching to the selected tab…' : 'Opening the integrated test browser…');
+    message('feedback', browser || state.connection.available ? 'Attaching to the selected tab…' : 'Opening the integrated test browser…');
     if (await starting) message('feedback', browser ? 'Mocking is active. Reload or interact with your app.' : 'Mocking is active in the integrated test browser.');
   }
 });
@@ -1146,7 +1111,6 @@ $('toggle').addEventListener('click', async () => {
 $('app-url').addEventListener('keydown', event => {
   if (event.key === 'Enter') $('toggle').click();
 });
-$('clear-activity').addEventListener('click', () => run('clear'));
 $('export').addEventListener('click', async () => {
   const feedback = 'scenario-file-status';
   settingsFeedback(feedback);
@@ -1293,6 +1257,8 @@ if (browser) {
   $('manage-browser-shortcut').addEventListener('click', () => {
     void request('shortcut-settings').catch(error => message('feedback', error.message, true));
   });
+}
+{
   const { postmanMockScript, readPostmanMock } = await import('../chromium/postman-mock.js');
   $('postman-mocks-tools').hidden = false;
   for (const [id, download] of [['export-postman-mock', true], ['copy-postman-mock', false]]) {
@@ -1302,7 +1268,9 @@ if (browser) {
         const scenario = activeScenario(state.config);
         if (!scenario.rules.some(rule => rule.enabled)) throw new Error('Enable at least one rule before exporting a Postman mock.');
         const script = postmanMockScript(scenario);
-        if (download) await saveFile('mockend.postman-mock.js', script, 'text/javascript');
+        if (download) {
+          if (await saveFile('mockend.postman-mock.js', script, 'text/javascript') === false) return;
+        } else if (copyToClipboard) await copyToClipboard(script);
         else await navigator.clipboard.writeText(script);
         settingsFeedback(feedback, download ? 'Postman mock exported.' : 'Postman mock copied.');
       } catch (error) { settingsFeedback(feedback, error.message, true); }
@@ -1340,7 +1308,7 @@ if (browser) {
       field($('scenario-form'), 'name').select();
     } catch (error) { message('paste-postman-mock-error', error.message, true); }
   });
-  $('open-tab').addEventListener('click', async () => {
+  if (browser) $('open-tab').addEventListener('click', async () => {
     try { await request('open-tab'); }
     catch (error) { message('feedback', error.message, true); }
   });
@@ -1361,6 +1329,8 @@ if (browser) {
       message('feedback', error.message, true);
     }
   }, () => refresh(true).catch(() => {}), ({ rules, skipped }, site) =>
-    openScenarioDraft(site ? `${new URL(site).hostname} mocks` : 'Recorded API mocks', rules, skipped));
+    openScenarioDraft(site ? `${new URL(site).hostname} mocks` : 'Recorded API mocks', rules, skipped), {
+    connectRecording, saveFile, copyToClipboard, autoRecord: browser, readAppUrl: () => $('app-url').value
+  });
 }
 await refresh();

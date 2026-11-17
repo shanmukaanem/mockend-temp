@@ -1,4 +1,4 @@
-const groups = ['Type', 'Method', 'Status', 'URL'];
+const groups = ['Type', 'Method', 'Status'];
 const statusLabels = new Map([[0, 'Failed'], [1, '1xx'], [2, '2xx'], [3, '3xx'], [4, '4xx'], [5, '5xx'], [6, '6xx'], [7, '7xx'], [8, '8xx'], [9, '9xx']]);
 const normalize = text => text.normalize('NFKC').toLowerCase();
 
@@ -191,7 +191,7 @@ export function mountFilters(apply) {
       this.resetOptions();
       storedSelections = selections.slice(0, groups.length).map((values, index) => new Set(
         index === 0 ? values.map(value => value === 'XHR / Fetch' ? 'Fetch/XHR' : value)
-          : index === 3 ? values.filter(value => /^https?:\/\//i.test(value)) : values
+          : values
       ));
     },
     resetOptions() {
@@ -215,7 +215,7 @@ export function mountFilters(apply) {
             }
           }
           sync(values, labels);
-        } else sync(index === 3 ? new Set(saved ?? []) : values);
+        } else sync(values);
         for (const value of saved ?? []) {
           const option = options.get(value);
           if (option) {

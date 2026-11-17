@@ -3,7 +3,7 @@
   "name": "Mockend",
   "short_name": "Mockend",
   "description": "Test browser behavior with reusable JSON API mocks, payload matching, and simulated network failures.",
-  "version": "1.4.36",
+  "version": "1.4.37",
   "minimum_chrome_version": "125",
   "permissions": ["debugger", "storage", "tabs", "sidePanel", "clipboardWrite"],
   "background": { "service_worker": "chromium/background.js", "type": "module" },

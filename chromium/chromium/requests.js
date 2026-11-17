@@ -1,6 +1,5 @@
 import { openRequestStore } from './request-store.js';
 import { mountCodePreview } from '../ui/json-editor.js';
-import { saveFile } from './bridge.js';
 import { captureResponse, captureScenario, capturedResource } from './capture.js';
 import { curlCommand, decodeBody, postmanCollection } from './postman.js';
 
@@ -32,7 +31,8 @@ function requestType(entry) {
   return ['api', 'XHR', 'Fetch'].includes(resource) ? 'Fetch/XHR' : resource === 'any' ? 'Unknown' : resource;
 }
 
-export function mountRequests(openEditor, chooseView, openMockRule, refreshConnection, createScenario) {
+export function mountRequests(openEditor, chooseView, openMockRule, refreshConnection, createScenario, { connectRecording, saveFile, readAppUrl, autoRecord, copyToClipboard }) {
+  const copyRequestText = copyToClipboard ? async text => copyToClipboard(await text) : copyText;
   const byId = id => document.getElementById(id);
   const rows = byId('request-rows');
   const status = byId('capture-status');
@@ -137,7 +137,6 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   let recording = true;
   let port;
   let nextToken = 0;
-  let windowId;
   let recordedTab;
   const pending = new Map();
   const responseReads = new WeakMap();
@@ -145,8 +144,8 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   const recordingState = byId('recording-state');
   const recordToggle = byId('record-toggle');
   const detail = byId('request-details');
-  const showRequestBody = mountCodePreview(byId('request-detail-body'), 'Copy request body', copyText);
-  const showResponseBody = mountCodePreview(byId('response-detail-body'), 'Copy response body', copyText);
+  const showRequestBody = mountCodePreview(byId('request-detail-body'), 'Copy request body', copyRequestText);
+  const showResponseBody = mountCodePreview(byId('response-detail-body'), 'Copy response body', copyRequestText);
   if (!('closedBy' in detail)) {
     const onBackdrop = event => {
       const bounds = detail.getBoundingClientRect();
@@ -172,7 +171,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
         pending.delete(token);
         resolve(body ? [body.text, body.encoding] : []);
       });
-      try { port.postMessage({ type: 'body', id: entry.id, token }); }
+      try { Promise.resolve(port.postMessage({ type: 'body', id: entry.id, token })).catch(() => pending.get(token)?.()); }
       catch { pending.get(token)?.(); }
     });
     responseReads.set(entry, read);
@@ -246,7 +245,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
 
   async function copyCurl(entry) {
     try {
-      await copyText(curlCommand(entry.request));
+      await copyRequestText(curlCommand(entry.request));
       showStatus('cURL command copied.');
     } catch {
       showStatus('Could not copy the cURL command. Try again from the active side panel.', true);
@@ -348,7 +347,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
       const extra = byId('request-add-filters');
       extra.replaceChildren(...[
         [1, verb, verb], ...[...typeTags.children].map(tag => [0, tag.textContent, tag.textContent]),
-        [2, `http:${code}`, code || 'Failed'], [3, url, 'URL']
+        [2, `http:${code}`, code || 'Failed'], [null, endpoint.origin, 'URL']
       ].map(([index, value, label]) => {
         const option = document.createElement('button');
         option.type = 'button';
@@ -356,7 +355,11 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
         option.textContent = `Add ${label} to filter`;
         option.addEventListener('click', () => {
           actions.hidePopover();
-          filters.add(index, value);
+          if (index === null) {
+            if (baseUrls.has('*')) baseUrls = new Set();
+            baseUrls.add(value === origin ? 'current' : value);
+            filter();
+          } else filters.add(index, value);
         });
         return option;
       }));
@@ -372,7 +375,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
       extra.firstElementChild?.focus();
     });
     const types = entry._mocked ? [type, 'Mocked'] : [type];
-    const values = [types, verb, [Math.floor(code / 100), `http:${code}`], url];
+    const values = [types, verb, [Math.floor(code / 100), `http:${code}`]];
     const urls = requestSearchText(url);
     const search = [
       ...urls, verb, String(code), ...types, entry._networkError ?? '', entry._mockRule ?? '',
@@ -393,8 +396,9 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
     const urls = options.filter(url => !['current', '*', current].includes(url)).sort();
     const [label, caption] = baseToggle.children;
     label.textContent = baseUrls.has('*') ? 'All Base URLs'
-      : baseUrls.size === 1 && baseUrls.has('current') ? 'Current Base URL' : `${baseUrls.size} Base URLs`;
-    caption.textContent = baseUrls.has('current') ? current : '';
+      : baseUrls.has('current') && baseUrls.size === 1 ? 'Current Base URL'
+        : baseUrls.size === 1 ? 'Selected Base URL' : `${baseUrls.size} Base URLs`;
+    caption.textContent = baseUrls.has('current') ? current : baseUrls.size === 1 && !baseUrls.has('*') ? [...baseUrls][0] : '';
     const choices = [['current', 'Current Base URL', current], ...urls.map(url => [url, url])];
     selectAllBases.checked = baseUrls.has('*');
     selectAllBases.indeterminate = !baseUrls.has('*') && baseUrls.size > 1;
@@ -553,8 +557,8 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
       if (download) {
         const json = await content;
         if (exportGeneration !== generation) return;
-        await saveFile('mockroute.postman_collection.json', json);
-      } else await copyText(content);
+        if (await saveFile('mockroute.postman_collection.json', json) === false) return;
+      } else await copyRequestText(content);
       if (!download && version === copyVersion) {
         setCopyLabel('Copied');
         copyReset = setTimeout(() => {
@@ -628,6 +632,17 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
       regex = saved?.regex ?? false;
       urlOnly = saved?.urlOnly ?? false;
       baseUrls = new Set(saved?.baseUrls ?? [saved?.hideOtherSites === false ? '*' : 'current']);
+      if (saved?.selections?.[3]?.length) {
+        baseUrls.delete('*');
+        baseUrls.delete('current');
+        for (const value of saved.selections[3]) {
+          try {
+            const base = new URL(value).origin;
+            if (/^https?:/.test(base)) baseUrls.add(base === next ? 'current' : base);
+          } catch { /* Ignore older host-only facet entries. */ }
+        }
+        if (!baseUrls.size) baseUrls.add('current');
+      }
       filters.restore(saved?.selections);
       order = saved?.order ?? defaultOrder;
       for (const { id, entry, body } of history) {
@@ -657,9 +672,8 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
     filter();
   });
 
-  function connect() {
-    port = chrome.runtime.connect({ name: 'mockroute-recording' });
-    port.onMessage.addListener(message => {
+  async function connect() {
+    port = await connectRecording(message => {
       if (message.type === 'request') {
         const entry = message.row;
         const body = readBody(entry);
@@ -679,40 +693,42 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
       } else if (message.type === 'body') {
         pending.get(message.token)?.(message.body);
       }
-    });
-    port.onDisconnect.addListener(() => {
+    }, () => {
       port = undefined;
       for (const resolve of pending.values()) resolve();
       setRecordingStatus('stopped', 'Recording disconnected.');
     });
   }
 
-  function start() {
-    if (!port) connect();
+  async function start() {
+    if (!port) await connect();
     recordToggle.disabled = true;
     recordingState.textContent = 'Starting recording…';
     recordToggle.title = recordingState.textContent;
     recordToggle.dataset.state = 'starting';
-    port.postMessage({ type: 'start', windowId });
+    showStatus('');
+    await port.postMessage({ type: 'start', url: readAppUrl?.() });
   }
 
   recordToggle.addEventListener('click', () => {
     if (recording && port) {
       recordToggle.disabled = true;
-      port.postMessage({ type: 'stop' });
+      Promise.resolve(port.postMessage({ type: 'stop' })).catch(error => setRecordingStatus('recording', error.message));
     } else {
       void begin();
     }
   });
   async function begin() {
     try {
-      windowId ??= (await chrome.windows.getCurrent()).id;
-      start();
+      await start();
     } catch (error) {
       setRecordingStatus('stopped', error.message);
+      showStatus(error.message, true);
     }
   }
   renderOrder();
   filter();
-  void begin();
+  if (autoRecord) void begin();
+  else void connect().then(() => port.postMessage({ type: 'sync' }))
+    .catch(error => setRecordingStatus('stopped', error.message));
 }
