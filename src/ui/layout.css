@@ -558,3 +558,8 @@ select::picker-icon { margin-inline-start: auto; }
 .transfer-controls > button.transfer-trigger:last-of-type { border-start-end-radius: var(--control-radius); border-end-end-radius: var(--control-radius); }
 
 .request-table th > :is([data-sort], [data-rule-sort]) { font-size: 11px; }
+
+/* Sort indicators reserve a fixed box, independent of platform arrow glyph metrics. */
+.request-table :is([data-sort], [data-rule-sort]) > span { display: inline-block; box-sizing: border-box; width: 6px; height: 6px; margin-inline-start: 6px; border: solid currentColor; border-width: 1px 1px 0 0; font-size: 0; vertical-align: middle; transform: rotate(-45deg); }
+.request-table th[aria-sort="descending"] :is([data-sort], [data-rule-sort]) > span { transform: rotate(135deg); }
+.request-table :is([data-sort], [data-rule-sort]) > span:empty { visibility: hidden; }
