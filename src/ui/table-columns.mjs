@@ -24,14 +24,32 @@ export function mountTableColumns(table, key, columns) {
   table.classList.add('sized-table')
   table.dataset.sized = 'false'
   const context = document.createElement('canvas').getContext('2d')
-  const widths = columns.map(column => column.min)
-  const automatic = columns.map(column => column.width ?? column.min)
+  const measure = (text, style) => {
+    context.font = style.font
+    return context.measureText(text).width + Math.max(0, text.length - 1) * (parseFloat(style.letterSpacing) || 0)
+  }
+  const minimums = columns.map(column => column.min)
+  function updateMinimums() {
+    headings.forEach((heading, index) => {
+      const header = heading.querySelector('[data-sort], [data-rule-sort]')
+      if (!header || columns[index].min === columns[index].max) return
+      const style = getComputedStyle(header)
+      const cell = getComputedStyle(heading)
+      const icon = getComputedStyle(header.querySelector('span'))
+      const padding = [style.paddingLeft, style.paddingRight, cell.paddingLeft, cell.paddingRight].reduce((sum, value) => sum + (parseFloat(value) || 0), 0)
+      const arrow = Math.max(parseFloat(icon.width) || 0, measure('\u2191', icon), measure('\u2193', icon))
+      minimums[index] = Math.max(columns[index].min, Math.ceil(measure(titles[index], style) + arrow + (parseFloat(icon.marginInlineStart) || 0) + padding + 2))
+    })
+  }
+  updateMinimums()
+  const widths = [...minimums]
+  const automatic = columns.map((column, index) => Math.max(minimums[index], column.width ?? minimums[index]))
   /** @type {(number | null)[]} */
   let manual = columns.map(() => null)
   try {
     const saved = JSON.parse(localStorage.getItem(key) ?? 'null')
     if (Array.isArray(saved) && saved.length === columns.length) {
-      manual = saved.map((width, index) => Number.isFinite(width) && width >= columns[index].min && width <= limit(index) ? width : null)
+      manual = saved.map((width, index) => Number.isFinite(width) && width >= minimums[index] && width <= limit(index) ? width : null)
     }
   } catch { /* Storage is optional in restricted webviews. */ }
   let frame = 0
@@ -42,11 +60,11 @@ export function mountTableColumns(table, key, columns) {
   }
 
   function limit(index) {
-    return columns[index].grow ? Math.max(columns[index].max, table.parentElement.clientWidth) : columns[index].max
+    return Math.max(minimums[index], columns[index].grow ? Math.max(columns[index].max, table.parentElement.clientWidth) : columns[index].max)
   }
 
   function apply(index, value) {
-    const { min } = columns[index]
+    const min = minimums[index]
     const width = Math.round(Math.max(min, Math.min(limit(index), value)))
     widths[index] = width
     cols[index].style.width = `${width}px`
@@ -57,24 +75,20 @@ export function mountTableColumns(table, key, columns) {
     return width
   }
 
-  const measure = (text, style) => {
-    context.font = style.font
-    return context.measureText(text).width + Math.max(0, text.length - 1) * (parseFloat(style.letterSpacing) || 0)
-  }
-
   function fit() {
     frame = 0
     if (resizing || !table.getClientRects().length) return
+    updateMinimums()
     const rows = [...table.tBodies[0].rows].filter(row => !row.hidden && row.cells.length === columns.length)
     const target = [...widths]
     columns.forEach((column, index) => {
       if (column.min === column.max) { target[index] = column.min; return }
-      if (manual[index] !== null) { target[index] = manual[index]; return }
-      if (column.width !== undefined) { automatic[index] = target[index] = column.width; return }
+      if (manual[index] !== null) { target[index] = Math.max(minimums[index], manual[index]); return }
+      if (column.width !== undefined) { automatic[index] = target[index] = Math.max(minimums[index], column.width); return }
       const heading = headings[index]
       const header = heading.querySelector('[data-sort], [data-rule-sort]') ?? heading
       const title = titles[index]
-      let width = Math.max(column.min, measure(title, getComputedStyle(header)) + 42)
+      let width = Math.max(minimums[index], measure(title, getComputedStyle(header)) + 42)
       if (!column.fixed && rows.length) {
         const sample = rows[0].cells[index]
         const style = getComputedStyle(sample.querySelector('.mono, button, .type-badge') ?? sample)
@@ -90,7 +104,7 @@ export function mountTableColumns(table, key, columns) {
     })
     const available = table.parentElement.clientWidth
     const total = target.reduce((sum, width) => sum + width, 0)
-    const room = target.map((width, index) => columns[index].width === undefined ? Math.max(0, width - columns[index].min) : 0)
+    const room = target.map((width, index) => columns[index].width === undefined ? Math.max(0, width - minimums[index]) : 0)
     const totalRoom = room.reduce((sum, width) => sum + width, 0)
     let reduction = Math.min(Math.max(0, total - available), totalRoom)
     let remainingRoom = totalRoom
@@ -125,8 +139,8 @@ export function mountTableColumns(table, key, columns) {
       const handle = heading.querySelector('.column-resize')
       if (!handle) return
       const total = widths[index] + widths[index + 1]
-      handle.setAttribute('aria-valuemin', String(Math.max(columns[index].min, total - limit(index + 1))))
-      handle.setAttribute('aria-valuemax', String(Math.min(limit(index), total - columns[index + 1].min)))
+      handle.setAttribute('aria-valuemin', String(Math.max(minimums[index], total - limit(index + 1))))
+      handle.setAttribute('aria-valuemax', String(Math.min(limit(index), total - minimums[index + 1])))
     })
   }
 
@@ -135,8 +149,8 @@ export function mountTableColumns(table, key, columns) {
     // Preserve every other column, including measured content widths, on later renders.
     if (!resizing) manual = [...widths]
     const total = widths[index] + widths[index + 1]
-    const minimum = Math.max(columns[index].min, total - limit(index + 1))
-    const maximum = Math.min(limit(index), total - columns[index + 1].min)
+    const minimum = Math.max(minimums[index], total - limit(index + 1))
+    const maximum = Math.min(limit(index), total - minimums[index + 1])
     const left = Math.round(Math.max(minimum, Math.min(maximum, value)))
     manual[index] = apply(index, left)
     manual[index + 1] = apply(index + 1, total - left)
@@ -151,7 +165,7 @@ export function mountTableColumns(table, key, columns) {
     handle.setAttribute('role', 'separator')
     handle.setAttribute('aria-orientation', 'vertical')
     handle.setAttribute('aria-label', `Resize ${heading.textContent.trim() || 'Actions'} column`)
-    handle.setAttribute('aria-valuemin', String(columns[index].min))
+    handle.setAttribute('aria-valuemin', String(minimums[index]))
     handle.setAttribute('aria-valuemax', String(columns[index].max))
     handle.setAttribute('aria-valuenow', String(widths[index]))
     handle.title = 'Drag or use arrow keys to resize. Double-click to restore the default width.'
@@ -186,7 +200,7 @@ export function mountTableColumns(table, key, columns) {
     })
     handle.addEventListener('keydown', event => {
       const step = event.shiftKey ? 1 : 10
-      const value = { ArrowLeft: widths[index] - step, ArrowRight: widths[index] + step, Home: columns[index].min, End: columns[index].max }[event.key]
+      const value = { ArrowLeft: widths[index] - step, ArrowRight: widths[index] + step, Home: minimums[index], End: columns[index].max }[event.key]
       if (value === undefined) return
       event.preventDefault()
       resizePair(index, value)

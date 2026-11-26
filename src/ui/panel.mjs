@@ -1,3 +1,4 @@
+import { mountSplitButtons } from './split-buttons.mjs';
 import { baseUrlLabel } from './url-label.mjs';
 import { selectedFirst, fitSelect, prepareSelect, replaceSelectOptions, longestOptionWidth, clippedSelectValue, clippedControlValue, mountSelectLayouts } from './dropdowns.mjs';
 import { urlParts } from '../core/url-parts.mjs';
@@ -137,6 +138,7 @@ function renderConfig() {
     option.dataset.clipTooltip = '';
     option.setAttribute('aria-pressed', String(item.id === config.activeScenarioId));
     row.append(option);
+    const actions = element('div', 'scenario-actions split-buttons');
     for (const [path, action, callback] of [
       ['m4 16-1 5 5-1L21 7l-4-4L4 16Zm10-10 4 4', 'Rename', () => editScenario('rename', item)],
       ['M8 8h12v12H8V8Zm8-4H4v12', 'Duplicate', () => editScenario('duplicate', item)],
@@ -153,8 +155,9 @@ function renderConfig() {
       icon.append(shape);
       control.append(icon);
       control.disabled = action === 'Delete' && config.scenarios.length < 2;
-      row.append(control);
+      actions.append(control);
     }
+    row.append(actions);
     return row;
   }));
   selectedFirst($('scenario-options'), '.scenario-option', row => row.querySelector('.scenario-choice').getAttribute('aria-pressed') === 'true');
@@ -1945,4 +1948,5 @@ if (browser) {
   });
   readCapturedOrigins = requestPanel.apiOrigins;
 }
+mountSplitButtons();
 await refresh();

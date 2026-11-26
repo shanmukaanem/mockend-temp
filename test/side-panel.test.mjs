@@ -238,7 +238,11 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.equal(await optionSearch.inputValue(), '');
   assert.deepEqual(await page.locator('#filter-chips .filter-chip').allTextContents(), ['Fetch/XHR']);
   const removeApi = page.getByRole('button', { name: 'Remove type filter Fetch/XHR' });
-  assert.ok((await removeApi.boundingBox()).width >= 24);
+  const chipEdges = await removeApi.evaluate(node => {
+    const button = node.getBoundingClientRect(); const chip = node.closest('.filter-chip').getBoundingClientRect();
+    return { width: button.width, flush: Math.abs(button.right - chip.right) < 1 && Math.abs(button.height - chip.height) < 1 };
+  });
+  assert.ok(chipEdges.width >= 18 && chipEdges.flush, JSON.stringify(chipEdges));
   await removeApi.press('Enter');
   assert.equal(await removeApi.count(), 0);
   await filterOptions.getByRole('checkbox', { name: 'Mocked', exact: true }).check();
@@ -671,7 +675,8 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.equal(await recorder.getAttribute('data-state'), 'stopped');
   await page.mouse.move(0, 0);
   const startStyle = await recordingStyle();
-  assert.equal(startStyle.background, 'rgb(230, 218, 196)');
+  assert.equal(startStyle.background, 'rgba(0, 0, 0, 0)');
+  assert.equal(await recorder.evaluate(node => getComputedStyle(node.parentElement).backgroundColor), 'rgb(230, 218, 196)');
   assert.notEqual(startStyle.shape, stopStyle.shape);
   await page.getByRole('button', { name: 'Start recording' }).click();
   await page.getByText('Recording active tab').waitFor();
@@ -700,11 +705,17 @@ test('the side panel starts recording, filters requests and opens a selected res
   await dots.click();
   await response.waitFor();
   await page.keyboard.press('Escape');
-  await query.fill('/related');
+  await query.fill('no-request-matches-clear-regression');
+  assert.equal(await rows.count(), 0);
+  assert.equal(await page.locator('#request-count').textContent(), '(0/2)');
+  assert.equal(await page.locator('#clear-requests').isEnabled(), true);
+  assert.match(await page.locator('#request-count').getAttribute('data-tooltip'), /latest 150/);
   await page.locator('#clear-requests').click();
   assert.equal(await rows.count(), 0);
   await page.getByRole('button', { name: 'Clear request search' }).click();
-  assert.equal(await rows.count(), 1);
+  assert.equal(await rows.count(), 0);
+  assert.equal(await page.locator('#request-count').textContent(), '(0)');
+  assert.equal(await page.locator('#clear-requests').isEnabled(), false);
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('fixture-site', { detail: 'https://example.test/' })));
   await page.getByRole('button', { name: 'View GET /logo.png' }).waitFor();
   assert.equal(await rows.count(), 3);

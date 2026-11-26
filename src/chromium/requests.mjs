@@ -67,6 +67,8 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   const selectAllBases = baseMenu.querySelector('[data-url="*"] input');
   let baseUrls = new Set(['current']);
   const clearRequests = byId('clear-requests');
+  setControlLabel(clearRequests, 'Clear all');
+  clearRequests.dataset.tooltip = 'Clear all saved requests in this capture, including hidden and filtered rows.';
   const copyLabel = byId('copy-postman-label');
   const copyStatus = byId('postman-status');
   const filters = mountFilters(filter, { externalGroups: [4, 5], hiddenGroups: [3] });
@@ -521,7 +523,8 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
     }
     const count = filtered.length === captures.length ? `(${captures.length})` : `(${filtered.length}/${captures.length})`;
     if (byId('request-count').textContent !== count) byId('request-count').textContent = count;
-    clearRequests.disabled = filtered.length === 0;
+    clearRequests.disabled = captures.length === 0;
+    byId('request-count').dataset.tooltip = `${filtered.length} visible / ${captures.length} saved requests. Keeps the latest 150 requests for this app and site; new requests replace the oldest.`;
     saveView();
     copy.dataset.empty = String(!filtered.length);
     copy.title = filtered.length ? 'Copy filtered requests as a Postman collection' : 'No requests match the current filters';
@@ -702,14 +705,19 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
 
   document.addEventListener('mockend-view-changed', saveView);
   clearRequests.addEventListener('click', () => {
-    const visible = new Set(filtered);
-    if (!visible.size) return;
-    for (const item of visible) item.row.remove();
-    for (let index = captures.length - 1; index >= 0; index--) {
-      if (visible.has(captures[index])) captures.splice(index, 1);
-    }
-    enqueue(async () => (await cache)?.clear([...visible].map(item => item.id)));
-    filter();
+    const clearedGeneration = generation;
+    enqueue(async () => {
+      if (clearedGeneration !== generation) return;
+      const ids = captures.map(item => item.id);
+      clearRowHover();
+      detailVersion++;
+      if (detail.open) detail.close();
+      if (actions.matches(':popover-open')) actions.hidePopover();
+      captures.length = 0;
+      rows.replaceChildren();
+      filter();
+      await (await cache)?.clear(ids);
+    });
   });
 
   async function connect() {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.2
+
+- Clear all captured requests, including hidden and filtered records; keep Clear all available when no rows match, and explain the rolling 150-request limit in the count tooltip.
+- Keep sortable headers above their measured label-and-arrow minimums for pointer, keyboard, saved widths, and responsive fitting; restore the original up/down arrows.
+- Share one split-button surface and sliding hover indicator across action groups, with inset dark dividers that turn beige around hovered segments.
+- Remove nested Flow option backgrounds, align dropdown arrows at the right edge, and attach clear buttons to rounded right corners.
+
 ## 0.0.1
 
 - Add searches to Base URL, Path, and Endpoint trays; display domains while retaining full URLs for matching and edits.

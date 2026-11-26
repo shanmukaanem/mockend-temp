@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — Mockend
 
-Last updated: 2026-11-26. Release: 0.0.1. Submission status: draft, not published.
+Last updated: 2026-11-26. Release: 0.0.2. Submission status: draft, not published.
 
 ## Store listing
 
@@ -82,6 +82,7 @@ Keep the source repository and full offline bundle private if source access is r
 
 | Version | Date | Changes | Status |
 | --- | --- | --- | --- |
+| 0.0.2 | 2026-11-26 | Clear complete capture history, enforce readable header minimums, restore sort arrows, and unify split-button hover surfaces | Draft |
 | 0.0.1 | 2026-11-26 | Version reset, searchable URL trays, softer joined controls, simpler app management, shortcuts and automatic GitHub releases | Draft |
 | 1.5.6 | 2026-11-26 | Multi-Env rule targeting, aligned URL previews, contained selected values, selected-first reusable dropdowns and compact tabs | Draft |
 | 1.5.5 | 2026-11-26 | Grouped Env saves, independent inline URL editing, adjustable compact columns, aligned headers and content-sized option trays | Draft |

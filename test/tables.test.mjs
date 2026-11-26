@@ -142,7 +142,7 @@ test('request and rule tables split URLs and support independent filters', async
   for (const width of [620, 900, 1280]) {
     await page.setViewportSize({ width, height: 760 });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.deepEqual(await requestTable.locator('col').evaluateAll(cols => [1, 2, 4, 5].map(index => parseFloat(cols[index].style.width))), [76, 160, 84, 88]);
+    assert.deepEqual(await requestTable.locator('col').evaluateAll(cols => [1, 2, 4, 5].map(index => parseFloat(cols[index].style.width))), [1, 2, 4, 5].map(index => columnWidths[index]));
     const fit = await page.locator('#requests-view .request-table').evaluate(node => ({ client: node.clientWidth, scroll: node.scrollWidth, table: node.querySelector('table').offsetWidth, widths: [...node.querySelectorAll('col')].map(col => col.style.width) }));
     assert.ok(fit.scroll <= fit.client, JSON.stringify({ width, ...fit }));
     const actions = await page.locator('#request-rows .request-row-actions').first().boundingBox();
@@ -185,7 +185,7 @@ test('request and rule tables split URLs and support independent filters', async
   await page.mouse.move(dividerBox.x + dividerBox.width / 2 - 10, dividerBox.y + dividerBox.height / 2);
   await page.mouse.up();
   const manualWidth = Number(await requestDivider.getAttribute('aria-valuenow'));
-  assert.equal(manualWidth, Math.max(40, columnWidths[0] - 10));
+  assert.equal(manualWidth, Math.max(Number(await requestDivider.getAttribute('aria-valuemin')), columnWidths[0] - 10));
   const stableWidths = await requestTable.locator('col').evaluateAll(cols => cols.map(col => col.style.width));
   for (const column of ['method', 'status', 'endpoint', 'id', 'id']) {
     await page.locator(`#requests-view [data-sort="${column}"]`).click();
@@ -475,13 +475,18 @@ test('request and rule tables split URLs and support independent filters', async
   await page.keyboard.press('Home');
   const pairAfter = await ruleTable.locator('col').evaluateAll(cols => [1, 2].map(index => parseFloat(cols[index].style.width)));
   assert.equal(pairBefore[0] + pairBefore[1], pairAfter[0] + pairAfter[1]);
+  const minimumName = pairAfter[0];
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await ruleTable.locator('col').nth(1).evaluate(node => parseFloat(node.style.width)), minimumName);
+  assert.equal(await page.locator('#rules-view th').nth(1).locator('button').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+
   await nameDivider.dblclick();
   await page.setViewportSize({ width: 360, height: 760 });
   await page.waitForFunction(() => Number(document.querySelector('#rules-view colgroup').children[1].style.width.replace('px', '')) <= 360);
   config.scenarios[0].rules.find(rule => rule.id === 'filled').name = 'Long recorded response '.repeat(4);
   revision++;
   await page.getByRole('button', { name: /^Edit Long recorded response/ }).first().waitFor();
-  await page.waitForFunction(() => document.querySelector('#rules-view colgroup').children[1].style.width === '64px');
+  await page.waitForFunction(() => parseFloat(document.querySelector('#rules-view colgroup').children[1].style.width) === Number(document.querySelector('#rules-view th:nth-child(2) .column-resize').getAttribute('aria-valuemin')));
   const deleteButton = rules.first().getByRole('button', { name: /^Delete/ });
   assert.equal(await deleteButton.textContent(), '');
   assert.equal(await deleteButton.evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(174, 40, 62)');
@@ -532,8 +537,26 @@ test('request and rule tables split URLs and support independent filters', async
   const scenarioBox = await page.locator('#scenario').boundingBox();
   const downloadBox = await page.locator('#transfer-download').boundingBox();
   assert.ok(Math.abs(scenarioBox.y - downloadBox.y) < 2);
+  const splitStyle = await page.locator('.transfer-controls').evaluate(group => {
+    const buttons = [...group.querySelectorAll(':scope > button')];
+    const boxes = buttons.map(button => button.getBoundingClientRect());
+    const line = getComputedStyle(buttons[1], '::after');
+    return { joined: boxes.slice(1).every((box, index) => Math.abs(box.left - boxes[index].right) <= 1), top: parseFloat(line.top), bottom: parseFloat(line.bottom), border: getComputedStyle(buttons[1]).borderLeftWidth, motion: getComputedStyle(group, '::before').transitionProperty };
+  });
+  assert.equal(splitStyle.joined, true);
+  assert.ok(splitStyle.top >= 3 && splitStyle.bottom >= 3);
+  assert.equal(splitStyle.border, '0px');
+  assert.match(splitStyle.motion, /inset-inline/);
+
   await page.locator('#transfer-download').hover();
   assert.equal(await page.locator('#transfer-download-menu').evaluate(node => node.matches(':popover-open')), true);
+  const hoveredDividers = await page.locator('.transfer-controls').evaluate(group => {
+    const probe = document.createElement('span'); probe.style.color = 'var(--on-accent)'; group.append(probe);
+    const beige = getComputedStyle(probe).color; probe.remove();
+    return { beige, lines: ['transfer-download', 'transfer-upload'].map(id => getComputedStyle(document.getElementById(id), '::after').backgroundColor) };
+  });
+  assert.ok(hoveredDividers.lines.every(color => color === hoveredDividers.beige), JSON.stringify(hoveredDividers));
+
   await page.waitForFunction(() => document.querySelector('#transfer-download').getAttribute('aria-expanded') === 'true');
   await page.locator('#transfer-download').evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
   assert.notEqual(await page.locator('#transfer-download').evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
@@ -624,18 +647,18 @@ test('request and rule tables split URLs and support independent filters', async
   assert.ok(insets.right > insets.separator);
   assert.ok(insets.right - insets.separator >= 1);
   assert.equal(await header.locator('button').evaluate(node => parseFloat(getComputedStyle(node).paddingInlineStart)), 6);
-  assert.equal(await ruleTable.locator('col').nth(8).evaluate(node => parseFloat(node.style.width)), 44);
+  assert.ok(await ruleTable.locator('col').nth(8).evaluate(node => parseFloat(node.style.width)) >= 44);
   assert.equal(await page.locator('#rules-view th').nth(8).locator('.column-resize').count(), 1);
   assert.equal(await page.locator('#rules-view .column-resize').count(), 9);
   const envDivider = page.locator('#rules-view th').nth(8).getByRole('separator');
   const envBefore = await ruleTable.locator('col').evaluateAll(cols => cols.map(col => parseFloat(col.style.width)));
-  await envDivider.focus(); await page.keyboard.press('Shift+ArrowLeft');
+  await envDivider.focus(); await page.keyboard.press('Home');
   const envAfter = await ruleTable.locator('col').evaluateAll(cols => cols.map(col => parseFloat(col.style.width)));
-  assert.equal(envAfter[8], envBefore[8] - 1);
-  assert.equal(envAfter[9], envBefore[9] + 1);
+  assert.equal(envAfter[8], Number(await envDivider.getAttribute('aria-valuemin')));
+  assert.equal(envAfter[8] + envAfter[9], envBefore[8] + envBefore[9]);
   assert.deepEqual(envAfter.slice(0, 8), envBefore.slice(0, 8));
-  await page.keyboard.press('Shift+ArrowRight');
-  assert.equal(await ruleTable.locator('col').nth(8).evaluate(node => parseFloat(node.style.width)), 44);
+  await page.keyboard.press('Shift+ArrowLeft');
+  assert.equal(await ruleTable.locator('col').nth(8).evaluate(node => parseFloat(node.style.width)), envAfter[8]);
 
   assert.equal(await page.locator('#rules-view th').first().locator('[data-rule-sort] > span').evaluate(node => getComputedStyle(node).marginInlineStart), '6px');
   const idHeadingFit = await page.locator('#rules-view th').first().locator('button').evaluate(node => {
@@ -667,7 +690,7 @@ test('request and rule tables split URLs and support independent filters', async
   assert.notEqual(await page.locator('#scenario').evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
   const icons = await page.locator('#scenario-options .scenario-action svg').evaluateAll(nodes => nodes.map(node => [node.getBoundingClientRect().width, node.getBoundingClientRect().height]));
   const flowActionStyles = await page.locator('#scenario-options .scenario-action').evaluateAll(nodes => nodes.map(node => [getComputedStyle(node).backgroundColor, node.offsetWidth, node.offsetHeight]));
-  assert.ok(flowActionStyles.every(style => style[0] === 'rgb(230, 218, 196)' && style[1] === 22 && style[2] === 22));
+  assert.ok(flowActionStyles.every(style => style[0] === 'rgba(0, 0, 0, 0)' && style[1] === 22 && style[2] === 22));
   assert.ok(icons.length >= 3 && icons.every(([width, height]) => width === 12 && height === 12));
   const centers = await page.evaluate(() => {
     const center = node => { const box = node.getBoundingClientRect(); return box.x + box.width / 2; };
@@ -682,6 +705,12 @@ test('request and rule tables split URLs and support independent filters', async
     return choices.map(choice => ({ width: choice.getBoundingClientRect().width, scroll: choice.scrollWidth, client: choice.clientWidth }));
   });
   assert.ok(intrinsic.every(choice => choice.scroll <= choice.client), JSON.stringify(intrinsic));
+
+  const inactiveFlow = page.locator('.scenario-option').filter({ has: page.locator('.scenario-choice[aria-pressed="false"]') }).first();
+  await inactiveFlow.locator('.scenario-choice').hover();
+  const rowSurfaces = await inactiveFlow.evaluate(row => ({ row: getComputedStyle(row).backgroundColor, children: [...row.querySelectorAll('button, .scenario-actions')].map(node => getComputedStyle(node).backgroundColor), inset: row.getBoundingClientRect().right - row.querySelector('.scenario-actions').getBoundingClientRect().right }));
+  assert.ok(rowSurfaces.children.every(color => color === 'rgba(0, 0, 0, 0)'), JSON.stringify(rowSurfaces));
+  assert.ok(rowSurfaces.inset >= 6);
   await page.screenshot({ path: resolve(screenshots, 'flows-menu.png'), animations: 'disabled' });
   await page.keyboard.press('Escape');
   await page.mouse.move(0, 0);
