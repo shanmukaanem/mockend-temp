@@ -556,3 +556,5 @@ select::picker-icon { margin-inline-start: auto; }
 .transfer-controls > button.transfer-trigger { border-radius: 0; }
 .transfer-controls > button.transfer-trigger:first-of-type { border-start-start-radius: var(--control-radius); border-end-start-radius: var(--control-radius); }
 .transfer-controls > button.transfer-trigger:last-of-type { border-start-end-radius: var(--control-radius); border-end-end-radius: var(--control-radius); }
+
+.request-table th > :is([data-sort], [data-rule-sort]) { font-size: 11px; }

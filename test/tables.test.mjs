@@ -638,7 +638,16 @@ test('request and rule tables split URLs and support independent filters', async
   assert.equal(await ruleTable.locator('col').nth(8).evaluate(node => parseFloat(node.style.width)), 44);
 
   assert.equal(await page.locator('#rules-view th').first().locator('[data-rule-sort] > span').evaluate(node => getComputedStyle(node).marginInlineStart), '6px');
-  assert.equal(await page.locator('#rules-view th').first().locator('button').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+  const idHeadingFit = await page.locator('#rules-view th').first().locator('button').evaluate(node => {
+    const original = node.style.fontFamily;
+    const fits = [getComputedStyle(node).fontFamily, 'Arial', 'monospace'].map(font => {
+      node.style.fontFamily = font;
+      return { font, size: getComputedStyle(node).fontSize, text: node.textContent, scroll: node.scrollWidth, client: node.clientWidth };
+    });
+    node.style.fontFamily = original;
+    return fits;
+  });
+  assert.ok(idHeadingFit.every(value => value.scroll <= value.client), JSON.stringify(idHeadingFit));
   assert.equal(await page.locator('#rules-view th').first().evaluate(node => getComputedStyle(node).borderTopLeftRadius), '8px');
   const heights = await page.locator('#scenario-toolbar > button, #scenario-toolbar .transfer-trigger, .rules-head > button, .rules-head .url-selectors button').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).map(node => node.offsetHeight));
   assert.deepEqual([...new Set(heights)], [24]);
