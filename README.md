@@ -14,7 +14,7 @@ No build tools are needed to install these packages:
 
 Every `npm run build` refreshes **release/chromium/** and the same package filenames. Load that browser folder once and use Reload for future builds. Run `npm run update:vscode` to update the VS Code package in place, then Reload Window. See [the short update and publishing guide](PUBLISHING.md).
 
-Version metadata is synchronized with `npm run version:set -- 0.0.1` (or `patch`). After each push to `main`, passing CI automatically increments the patch version unless that push explicitly changed it, rebuilds both extensions, commits the stable packages, and publishes a tagged GitHub release. Pull `main` before your next change to include the generated release commit. GitHub release automation does not publish to extension stores or update locally installed extensions.
+Version metadata is synchronized with `npm run version:set -- 0.0.1` (or `patch`). After each push to `main`, passing CI automatically increments an already released patch version unless that push explicitly changed it, rebuilds both extensions, commits the stable packages, and publishes a tagged GitHub release. Pull `main` before your next change to include the generated release commit. GitHub release automation does not publish to extension stores or update locally installed extensions.
 
 **Proprietary:** use of the extensions is permitted under [LICENSE](LICENSE); modification and redistribution are restricted. Keep the full offline source bundle and repository private if you do not want to publish source.
 

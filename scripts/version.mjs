@@ -10,7 +10,8 @@ if (requested === '--auto') {
   const base = process.argv[3]
   if (!/^[a-f0-9]{40}$/.test(base ?? '')) throw new Error('Automatic versioning requires the previous push commit SHA.')
   const previous = JSON.parse(execFileSync('git', ['show', `${base}:package.json`], { cwd: root, encoding: 'utf8' })).version
-  requested = previous === current ? 'patch' : current
+  const tagged = execFileSync('git', ['tag', '--list', `v${current}`], { cwd: root, encoding: 'utf8' }).trim() === `v${current}`
+  requested = previous === current && tagged ? 'patch' : current
 }
 if (requested === 'patch') {
   const parts = current.split('.').map(Number)

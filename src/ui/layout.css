@@ -549,3 +549,10 @@ select::picker-icon { margin-inline-start: auto; }
 
 #scenario-options { grid-template-columns: minmax(0, 1fr); }
 .scenario-option { grid-template-columns: minmax(0, 1fr) repeat(3, 22px); }
+
+/* Allow the longest method label and use the same compact sort glyph in both tables. */
+.route-fields { grid-template-columns: min(84px, 25%) minmax(0, 1fr) min(114px, 29%) min(96px, 28%); }
+.request-table :is([data-sort], [data-rule-sort]) > span { font-size: 10px; }
+.transfer-controls > button.transfer-trigger { border-radius: 0; }
+.transfer-controls > button.transfer-trigger:first-of-type { border-start-start-radius: var(--control-radius); border-end-start-radius: var(--control-radius); }
+.transfer-controls > button.transfer-trigger:last-of-type { border-start-end-radius: var(--control-radius); border-end-end-radius: var(--control-radius); }
