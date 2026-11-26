@@ -10,17 +10,16 @@ const packages = [
   [`Mockend-Chrome-Store-${version}.zip`, 'Mockend-Chrome-Store.zip']
 ]
 const check = process.argv.includes('--check')
-const currentPackages = new Set(packages.flat())
 const versionedPackage = /^(?:mockend(?:-chrome(?:-store)?)?)-\d+(?:\.\d+){2,3}(?:-[\w.-]+)?\.(?:zip|vsix)$/i
 mkdirSync(new URL('release/', root), { recursive: true })
-const checksums = packages.flatMap(([name, alias]) => [name, alias].map(filename => {
+const checksums = packages.map(([name, filename]) => {
   const built = readFileSync(new URL(`dist/${name}`, root))
   const target = new URL(`release/${filename}`, root)
   if (check) {
     if (!built.equals(readFileSync(target))) throw new Error(`${filename} is stale. Run npm run build.`)
   } else copyFileSync(new URL(`dist/${name}`, root), target)
   return `${createHash('sha256').update(built).digest('hex')}  ${filename}`
-})).join('\n') + '\n'
+}).join('\n') + '\n'
 
 function files(directory, prefix = '') {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -48,10 +47,10 @@ for (const name of expected) {
     copyFileSync(new URL(name, source), target)
   }
 }
-// Retain only the current installers and their stable aliases across builds.
+// Keep only stable filenames in release; versioned packages belong in dist.
 for (const entry of readdirSync(new URL('release/', root), { withFileTypes: true })) {
-  if (!entry.isFile() || !versionedPackage.test(entry.name) || currentPackages.has(entry.name)) continue
-  if (check) throw new Error(`Outdated release package: ${entry.name}. Run npm run build.`)
+  if (!entry.isFile() || !versionedPackage.test(entry.name)) continue
+  if (check) throw new Error(`Versioned release duplicate: ${entry.name}. Run npm run build.`)
   unlinkSync(new URL(`release/${entry.name}`, root))
 }
 const checksumFile = new URL('release/SHA256SUMS', root)

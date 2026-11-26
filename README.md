@@ -79,7 +79,7 @@ New rules default to Env selector; new API origins join the selected Env when sa
 
 The editor previews Base URL, Path, Endpoint, and the complete resolved targets. The Rules table shows effective base URLs and environment names, with an Env filter. If a rule has no configured targets it matches no requests. Edit selected-environment rules before deleting a referenced environment. Environment settings are included in flow backups; old backups still import. Postman mock exports resolve the selected targets into independent portable routes (up to 200) at export time.
 
-Builds keep only the current versioned packages and stable aliases in `release/`; older versioned ZIP and VSIX archives are removed automatically.
+Builds keep only stable filenames in `release/`: `chromium/`, `Mockend.vsix`, `Mockend-Chrome.zip`, `Mockend-Chrome-Store.zip`, `Mockend.zip`, and `SHA256SUMS`. Versioned packages are generated only in `dist/`; duplicate versioned archives are removed from `release/` automatically.
 
 ## Tables in 1.5.5
 
