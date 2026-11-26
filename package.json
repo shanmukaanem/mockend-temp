@@ -1,0 +1,24 @@
+{
+  "name": "mockend",
+  "version": "1.5.5",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs",
+    "release": "npm run build",
+    "update:vscode": "npm run build && node scripts/update-vscode.mjs",
+    "release:check": "node scripts/release.mjs --check",
+    "publish:check": "node scripts/publish-check.mjs",
+    "demo": "node examples/demo.mjs",
+    "test": "node --test test/core.test.mjs test/hosts.test.mjs test/capture.test.mjs test/url-parts.test.mjs test/environments.test.mjs test/formats.test.mjs test/applications.test.mjs",
+    "browser:install": "playwright install chromium",
+    "test:tables": "node --test test/tables.test.mjs",
+    "test:panel": "node --test test/side-panel.test.mjs test/tables.test.mjs",
+    "test:vscode": "npm run build && node scripts/test-vscode.mjs",
+    "test:browser": "node --test test/chromium.test.mjs test/side-panel.test.mjs test/tables.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.57.0"
+  }
+}
