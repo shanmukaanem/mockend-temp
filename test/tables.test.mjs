@@ -159,18 +159,19 @@ test('request and rule tables split URLs and support independent filters', async
   for (const [label, index] of [['Method', 1], ['Base URL / Path', 2], ['Type', 4]]) {
     const divider = page.getByRole('separator', { name: `Resize ${label} column`, exact: true }).first();
     const before = Number(await divider.getAttribute('aria-valuenow'));
+    const movement = Math.min(10, Number(await divider.getAttribute('aria-valuemax')) - before);
     const neighbors = await requestTable.locator('col').evaluateAll(cols => cols.map(col => parseFloat(col.style.width)));
     await divider.focus();
     await page.keyboard.press('ArrowRight');
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.equal(Number(await divider.getAttribute('aria-valuenow')), before + 10);
+    assert.equal(Number(await divider.getAttribute('aria-valuenow')), before + movement);
     const resized = await requestTable.locator('col').evaluateAll(cols => cols.map(col => parseFloat(col.style.width)));
-    assert.equal(resized[index + 1], neighbors[index + 1] - 10);
+    assert.equal(resized[index + 1], neighbors[index + 1] - movement);
     for (let other = 0; other < resized.length; other++) if (other !== index && other !== index + 1) assert.equal(resized[other], neighbors[other]);
-    assert.equal(await requestTable.locator('col').nth(index).evaluate(node => parseFloat(node.style.width)), before + 10);
+    assert.equal(await requestTable.locator('col').nth(index).evaluate(node => parseFloat(node.style.width)), before + movement);
     await page.setViewportSize({ width: 900, height: 760 });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.equal(Number(await divider.getAttribute('aria-valuenow')), before + 10);
+    assert.equal(Number(await divider.getAttribute('aria-valuenow')), before + movement);
     await page.setViewportSize({ width: 620, height: 760 });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await divider.dblclick();
@@ -711,6 +712,7 @@ test('request and rule tables split URLs and support independent filters', async
   const rowSurfaces = await inactiveFlow.evaluate(row => ({ row: getComputedStyle(row).backgroundColor, children: [...row.querySelectorAll('button, .scenario-actions')].map(node => getComputedStyle(node).backgroundColor), inset: row.getBoundingClientRect().right - row.querySelector('.scenario-actions').getBoundingClientRect().right }));
   assert.ok(rowSurfaces.children.every(color => color === 'rgba(0, 0, 0, 0)'), JSON.stringify(rowSurfaces));
   assert.ok(rowSurfaces.inset >= 6);
+  assert.equal(await inactiveFlow.locator('.scenario-action').nth(1).evaluate(node => getComputedStyle(node, '::after').backgroundColor), hoveredDividers.beige);
   await page.screenshot({ path: resolve(screenshots, 'flows-menu.png'), animations: 'disabled' });
   await page.keyboard.press('Escape');
   await page.mouse.move(0, 0);
@@ -745,6 +747,7 @@ test('request and rule tables split URLs and support independent filters', async
     };
   });
   assert.equal(dropdownStyle.shared, true);
+  assert.equal(await page.locator('#response-status-toggle').evaluate(node => getComputedStyle(node).paddingInlineEnd), '6px');
   assert.ok(dropdownStyle.width <= 1, JSON.stringify(dropdownStyle));
   assert.deepEqual(dropdownStyle.native, dropdownStyle.popup);
   await page.screenshot({ path: resolve(screenshots, 'http-status-dropdown.png'), animations: 'disabled' });

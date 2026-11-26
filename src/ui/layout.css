@@ -609,3 +609,6 @@ html .split-buttons > button:nth-child(1 of button:not([hidden]))::after { displ
 html .split-buttons > button:hover:not(:disabled)::after,
 html .split-buttons > button:nth-child(1 of button:hover:not(:disabled) ~ button:not([hidden]))::after { background: var(--on-accent); }
 .search-control:focus-within { outline: 1px solid var(--muted); outline-offset: 1px; }
+
+.scenario-option:is(:hover, :focus-within) .scenario-actions > button::after { background: var(--on-accent); }
+#rule-form .dropdown-control { padding-inline-end: 6px; }
