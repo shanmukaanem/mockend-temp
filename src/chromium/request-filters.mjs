@@ -1,3 +1,5 @@
+import { mountOptionSearch } from '../ui/option-search.mjs';
+import { baseUrlLabel } from '../ui/url-label.mjs';
 import { measureTrayWidth } from '../ui/tray-size.mjs';
 import { selectedFirst } from '../ui/dropdowns.mjs';
 import { mountHoverTray } from '../ui/hover-tray.mjs';
@@ -79,7 +81,7 @@ function branch(container, name) {
       }
       for (const value of values) {
         if (options.has(value)) continue;
-        const caption = labels?.get(value) ?? (value === '/' && name === 'Path' ? 'No path' : value === '/' && name === 'Endpoint' ? 'No endpoint' : String(value));
+        const caption = labels?.get(value) ?? (name === 'Base URL' ? baseUrlLabel(String(value)) : undefined) ?? (value === '/' && name === 'Path' ? 'No path' : value === '/' && name === 'Endpoint' ? 'No endpoint' : String(value));
         const label = document.createElement('label');
         const input = document.createElement('input');
         input.type = 'checkbox';
@@ -127,6 +129,7 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
     header.append(heading, bulk.parentElement);
     facet.replaceChildren(header, details.querySelector('.facet-options'));
     menu.append(facet);
+    branches[index].search = mountOptionSearch(facet, facet.querySelector('.facet-options'), `Search ${name}`);
     const slot = prefix ? document.getElementById('rules-url-selectors') : document.getElementById('request-url-selectors');
     slot.append(control, menu);
     menu.addEventListener('beforetoggle', event => {
@@ -310,7 +313,9 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
         heading.textContent = groups[index] + (selected.size ? ` (${selected.size})` : '');
         return selected;
       });
-      for (const { options } of branches) {
+      for (const branch of branches) {
+        const { options } = branch;
+        branch.search?.();
         const parent = options.values().next().value?.label.parentElement;
         if (parent) selectedFirst(parent, 'label', label => label.querySelector('input').checked);
       }

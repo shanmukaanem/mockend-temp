@@ -12,7 +12,7 @@ jobs:
   verify:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
       - run: npm run build
       - run: npm run release:check
       - run: npm run publish:check
-      - run: git diff --exit-code -- release
+      - run: node scripts/verify-build.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: extensions-${{ matrix.os }}
@@ -37,7 +37,7 @@ jobs:
           if-no-files-found: error
 
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,3 +51,47 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:browser
+
+  release:
+    needs: [verify, browser]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Refuse to release an outdated commit
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+      - name: Synchronize or bump the patch version
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: node scripts/version.mjs --auto "$BASE_SHA"
+      - run: npm run build
+      - run: npm run publish:check
+      - name: Commit packages and publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json src/chromium/manifest.json src/vscode/package.json CHROMEWEBSTORE.md release
+          if ! git diff --cached --quiet; then
+            git commit -m "Release $VERSION"
+          fi
+          git tag "v$VERSION"
+          git push --atomic origin HEAD:main "refs/tags/v$VERSION"
+          gh release create "v$VERSION" release/Mockend-Chrome.zip release/Mockend.vsix release/Mockend.zip release/SHA256SUMS --title "Mockend $VERSION" --generate-notes --latest

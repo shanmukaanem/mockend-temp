@@ -41,6 +41,10 @@ exports.run = async () => {
     rule.url = `${url}api/cart`
     rule.response.body = { item: 'Canvas tote' }
     config.scenarios[0].rules = [rule]
+    await vscode.extensions.getExtension('mockend.mockend').activate()
+    assert.ok((await vscode.commands.getCommands(true)).includes('mockend.toggle'))
+    await vscode.commands.executeCommand('mockend.toggle')
+    await vscode.commands.executeCommand('mockend.toggle')
     await vscode.commands.executeCommand('mockend.open')
     await browser.start({ url, recordingOnly: true }, () => config, () => {})
     const recorded = await waitFor(() => publications.find(event => event.row?.request.url === rule.url))

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.1
+
+- Add searches to Base URL, Path, and Endpoint trays; display domains while retaining full URLs for matching and edits.
+- Keep selected tabs black with softer hover feedback, quick fading transitions, joined dark action separators, and roomier Flow actions.
+- Simplify Manage apps into the same list/detail layout as Env management.
+- Add the Ctrl+Shift+M VS Code toggle and a configurable browser global command, respecting platform shortcut restrictions.
+- Pin the supported CI runner and normalize archive metadata across operating systems.
+- Reset the release version to 0.0.1 across Chrome, VS Code, and npm metadata; retain all current functionality.
+- Synchronize versions with one command and automatically bump, build, tag, and upload GitHub releases after passing main-branch CI.
+
 ## 1.5.6
 
 - Replace Add/Edit mock targeting modes with an Env multi-select containing Select all and named Envs; remove the separate Base URL selector.

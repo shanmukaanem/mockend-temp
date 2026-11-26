@@ -4,31 +4,95 @@
   "description": "Test browser behavior with reusable JSON API mocks in the VS Code Integrated Browser.",
   "publisher": "mockend",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.5.6",
-  "engines": { "vscode": "^1.112.0" },
-  "categories": ["Testing"],
-  "keywords": ["api", "mock", "http", "testing", "integrated browser"],
-  "repository": { "type": "git", "url": "https://github.com/shanmukaanem/mockend-temp.git" },
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.112.0"
+  },
+  "categories": [
+    "Testing"
+  ],
+  "keywords": [
+    "api",
+    "mock",
+    "http",
+    "testing",
+    "integrated browser"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shanmukaanem/mockend-temp.git"
+  },
   "homepage": "https://github.com/shanmukaanem/mockend-temp#readme",
-  "bugs": { "url": "https://github.com/shanmukaanem/mockend-temp/issues" },
+  "bugs": {
+    "url": "https://github.com/shanmukaanem/mockend-temp/issues"
+  },
   "icon": "icons/128.png",
   "main": "./vscode/extension.cjs",
-  "files": ["vscode/*.cjs", "vscode/*.mjs", "core/*", "ui/*", "chromium/*", "icons/*", "panel.html", "README.md", "CHANGELOG.md", "PRIVACY.md", "LICENSE"],
-  "extensionKind": ["ui"],
+  "files": [
+    "vscode/*.cjs",
+    "vscode/*.mjs",
+    "core/*",
+    "ui/*",
+    "chromium/*",
+    "icons/*",
+    "panel.html",
+    "README.md",
+    "CHANGELOG.md",
+    "PRIVACY.md",
+    "LICENSE"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
   "capabilities": {
-    "virtualWorkspaces": { "supported": false },
-    "untrustedWorkspaces": { "supported": false }
+    "virtualWorkspaces": {
+      "supported": false
+    },
+    "untrustedWorkspaces": {
+      "supported": false
+    }
   },
   "contributes": {
     "commands": [
-      { "command": "mockend.open", "title": "Mockend: Open" },
-      { "command": "mockend.stop", "title": "Mockend: Stop Mocking" }
+      {
+        "command": "mockend.open",
+        "title": "Mockend: Open"
+      },
+      {
+        "command": "mockend.stop",
+        "title": "Mockend: Stop Mocking"
+      },
+      {
+        "command": "mockend.toggle",
+        "title": "Mockend: Toggle"
+      }
     ],
     "viewsContainers": {
-      "activitybar": [{ "id": "mockend", "title": "Mockend", "icon": "icons/activity.png" }]
+      "activitybar": [
+        {
+          "id": "mockend",
+          "title": "Mockend",
+          "icon": "icons/activity.png"
+        }
+      ]
     },
     "views": {
-      "mockend": [{ "type": "webview", "id": "mockend.control", "name": "API Testing" }]
-    }
+      "mockend": [
+        {
+          "type": "webview",
+          "id": "mockend.control",
+          "name": "API Testing"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "mockend.toggle",
+        "key": "ctrl+shift+m",
+        "mac": "ctrl+shift+m",
+        "linux": "ctrl+shift+m",
+        "win": "ctrl+shift+m"
+      }
+    ]
   }
 }

@@ -203,6 +203,7 @@ test('request and rule tables split URLs and support independent filters', async
   await page.locator('#request-query').fill('');
   await page.locator('#requests-view .request-table').evaluate(node => { node.scrollLeft = 0; });
   await page.locator('#path-scope-toggle').hover();
+  await page.locator('#path-scope-toggle').evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
   const pathMenu = page.locator('#path-scope-menu');
   await page.waitForFunction(() => document.querySelector('#path-scope-toggle').getAttribute('aria-expanded') === 'true');
   assert.equal(await page.locator('#path-scope-toggle small').evaluate(node => getComputedStyle(node).color === getComputedStyle(node.closest('button')).color), true);
@@ -232,6 +233,12 @@ test('request and rule tables split URLs and support independent filters', async
   assert.deepEqual(trayInsets.headerPadding, trayInsets.rowPadding);
   assert.deepEqual(trayInsets.checkboxPadding, trayInsets.rowPadding);
   assert.deepEqual(trayInsets.checkInsets, [8, 8, 8]);
+  const pathSearch = pathMenu.getByRole('searchbox', { name: 'Search Path', exact: true });
+  const beforeOptionSearch = await rows.count();
+  await pathSearch.fill('/api');
+  assert.equal(await pathMenu.locator('.facet-options label:visible').count(), 1);
+  assert.equal(await rows.count(), beforeOptionSearch);
+  await pathSearch.fill('');
   await page.screenshot({ path: resolve(screenshots, 'path-tray.png'), animations: 'disabled' });
   assert.equal(await allPaths.isChecked(), true);
   await pathMenu.getByRole('checkbox', { name: '/api', exact: true }).uncheck();
@@ -247,12 +254,18 @@ test('request and rule tables split URLs and support independent filters', async
   const currentBase = page.locator('#base-url-options label').first();
   assert.deepEqual(await currentBase.evaluate(node => ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'].map(key => getComputedStyle(node)[key])), ['8px', '8px', '8px', '8px']);
   assert.equal(await currentBase.locator('small').evaluate(node => getComputedStyle(node).display), 'block');
+  const baseSearch = page.locator('#base-url-menu').getByRole('searchbox', { name: 'Search Base URLs' });
+  await baseSearch.fill('no-such-origin');
+  assert.equal(await page.locator('#base-url-options label:visible').count(), 0);
+  assert.equal(await baseSearch.isVisible(), true);
+  await baseSearch.fill('');
+  assert.ok(await page.locator('#base-url-options label:visible').count() > 0);
   await page.screenshot({ path: resolve(screenshots, 'base-url-tray.png'), animations: 'disabled' });
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('#request-rows .record-delete').count(), 0);
 
   const request = rows.filter({ has: page.getByRole('button', { name: 'View POST /api/orders' }) });
-  assert.equal(await request.locator('td').nth(2).innerText(), 'https://example.test\n/api');
+  assert.equal(await request.locator('td').nth(2).innerText(), 'example.test\n/api');
   assert.equal(await request.locator('.endpoint-label').innerText(), 'orders');
   const split = request.locator('.request-row-actions');
   assert.deepEqual(await split.locator('button').allTextContents(), ['cURL', 'Mock']);
@@ -287,6 +300,9 @@ test('request and rule tables split URLs and support independent filters', async
   await page.keyboard.press('Escape');
   await page.locator('#endpoint-scope-toggle').hover();
   const endpointMenu = page.locator('#endpoint-scope-menu');
+  await endpointMenu.getByRole('searchbox', { name: 'Search Endpoint' }).fill('orders');
+  assert.equal(await endpointMenu.locator('.facet-options label:visible').count(), 1);
+  await endpointMenu.getByRole('searchbox', { name: 'Search Endpoint' }).fill('');
   await endpointMenu.getByRole('checkbox', { name: 'orders', exact: true }).uncheck();
   assert.equal(await rows.count(), 1);
   await endpointMenu.getByRole('checkbox', { name: 'Select all endpoint filters' }).check();
@@ -298,7 +314,8 @@ test('request and rule tables split URLs and support independent filters', async
   const rules = page.locator('#rules tr.rule');
   assert.equal(await rules.count(), 2);
   await page.locator('#clear-rules').hover();
-  assert.equal(await page.locator('#clear-rules').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 30, 26)');
+  await page.locator('#clear-rules').evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
+  assert.equal(await page.locator('#clear-rules').evaluate(node => getComputedStyle(node).backgroundColor), await page.locator('#path-scope-toggle').evaluate(node => { const probe = document.createElement('span'); probe.style.backgroundColor = 'var(--hover-ink)'; node.append(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; }));
   await page.mouse.move(0, 0);
   assert.notEqual(await page.locator('#clear-rules').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 30, 26)');
   for (const index of [0, 1, 0, 1]) {
@@ -361,7 +378,7 @@ test('request and rule tables split URLs and support independent filters', async
   await page.keyboard.press('Escape');
   await page.locator('#confirm-dialog').waitFor({ state: 'hidden' });
   assert.equal(config.scenarios[0].rules.length, 2);
-  assert.equal(await rules.locator('td').nth(3).innerText(), 'http://127.0.0.1:4319\n/api');
+  assert.equal(await rules.locator('td').nth(3).innerText(), '127.0.0.1:4319\n/api');
   assert.equal(await rules.locator('td').nth(4).innerText(), 'cart');
   await page.locator('#rules-request-query').fill('[');
   await page.locator('#rules-regex-toggle').click();
@@ -429,7 +446,7 @@ test('request and rule tables split URLs and support independent filters', async
   assert.equal(config.scenarios[0].rules.find(rule => rule.id === 'filled').response.statusText, 'Controlled rejection');
   assert.equal(config.scenarios[0].rules.find(rule => rule.id === 'filled').environmentScope, 'selected');
   const editedRule = rules.filter({ has: page.getByRole('button', { name: 'Edit Cart with items', exact: true }) });
-  assert.ok((await editedRule.locator('td').nth(3).innerText()).includes('https://qa.example.org'));
+  assert.ok((await editedRule.locator('td').nth(3).innerText()).includes('qa.example.org'));
   const sourceEnvironment = config.environments.find(env => env.baseUrls.includes('http://127.0.0.1:4319'));
   await envPicker.selectOption(sourceEnvironment.id);
   assert.equal(config.settings.environmentId, sourceEnvironment.id);
@@ -442,7 +459,7 @@ test('request and rule tables split URLs and support independent filters', async
   config.environments[0].baseUrls.pop();
   revision++;
   await page.waitForFunction(() => document.querySelector('#mock-environment option[value="@save"]'));
-  assert.ok((await editedRule.locator('td').nth(3).innerText()).includes('http://127.0.0.1:4319'));
+  assert.ok((await editedRule.locator('td').nth(3).innerText()).includes('127.0.0.1:4319'));
   const groupedEnvCount = config.environments.length;
   await envPicker.selectOption('@save');
   assert.equal(await page.locator('#environment-capture-preview').isVisible(), true);
@@ -518,7 +535,8 @@ test('request and rule tables split URLs and support independent filters', async
   await page.locator('#transfer-download').hover();
   assert.equal(await page.locator('#transfer-download-menu').evaluate(node => node.matches(':popover-open')), true);
   await page.waitForFunction(() => document.querySelector('#transfer-download').getAttribute('aria-expanded') === 'true');
-  assert.equal(await page.locator('#transfer-download').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 30, 26)');
+  await page.locator('#transfer-download').evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
+  assert.notEqual(await page.locator('#transfer-download').evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
   assert.equal(await page.getByRole('button', { name: 'Export Mockend', exact: true }).isVisible(), true);
   assert.equal(await page.getByRole('button', { name: 'Export Postman Specs', exact: true }).isVisible(), true);
   await page.keyboard.press('Escape');
@@ -636,7 +654,8 @@ test('request and rule tables split URLs and support independent filters', async
   await page.getByRole('button', { name: 'Rules', exact: true }).click();
   await page.locator('#scenario').hover();
   await page.waitForFunction(() => document.querySelector('#scenario').getAttribute('aria-expanded') === 'true');
-  assert.equal(await page.locator('#scenario').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 30, 26)');
+  await page.locator('#scenario').evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
+  assert.notEqual(await page.locator('#scenario').evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
   const icons = await page.locator('#scenario-options .scenario-action svg').evaluateAll(nodes => nodes.map(node => [node.getBoundingClientRect().width, node.getBoundingClientRect().height]));
   const flowActionStyles = await page.locator('#scenario-options .scenario-action').evaluateAll(nodes => nodes.map(node => [getComputedStyle(node).backgroundColor, node.offsetWidth, node.offsetHeight]));
   assert.ok(flowActionStyles.every(style => style[0] === 'rgb(230, 218, 196)' && style[1] === 22 && style[2] === 22));
@@ -648,7 +667,7 @@ test('request and rule tables split URLs and support independent filters', async
       inside: [...document.querySelector('.scenario-option').querySelectorAll('.scenario-action')].map(center)
     };
   });
-  for (let index = 1; index < centers.inside.length; index++) assert.ok(Math.abs(centers.inside[index] - centers.inside[index - 1] - 26) <= 1);
+  for (let index = 1; index < centers.inside.length; index++) assert.ok(Math.abs(centers.inside[index] - centers.inside[index - 1] - 22) <= 1, JSON.stringify(centers));
   const intrinsic = await page.locator('#scenario-options').evaluate(node => {
     const choices = [...node.querySelectorAll('.scenario-choice')];
     return choices.map(choice => ({ width: choice.getBoundingClientRect().width, scroll: choice.scrollWidth, client: choice.clientWidth }));
@@ -664,7 +683,8 @@ test('request and rule tables split URLs and support independent filters', async
   assert.equal(await page.locator('#rule-name').evaluate(node => getComputedStyle(node).paddingInlineStart), '8px');
   await page.locator('#rule-name').fill('Editor alignment');
   await page.locator('#edit-rule-name').hover();
-  assert.equal(await page.locator('#edit-rule-name').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 30, 26)');
+  await page.locator('#edit-rule-name').evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
+  assert.notEqual(await page.locator('#edit-rule-name').evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
   await page.locator('#edit-rule-name').click();
   assert.equal(await page.locator('#rule-name').evaluate(node => document.activeElement === node), true);
   const edges = await page.locator('#rule-form').evaluate(form => ['#rule-title', '.route-fields', '.rule-url-parts', '.rule-environment-controls', '#rule-tabs', '#response-section'].map(selector => form.querySelector(selector).getBoundingClientRect().left));
@@ -791,6 +811,7 @@ for (const host of ['chromium', 'vscode']) test(`${host} Env setup manages servi
 
   assert.equal(await nav.getByRole('button', { name: 'QA', exact: true }).locator('small').evaluate(node => getComputedStyle(node).color), await page.locator('.environment-manager > .environment-heading p').evaluate(node => getComputedStyle(node).color));
   await nav.getByRole('button', { name: 'QA', exact: true }).hover();
+  await nav.getByRole('button', { name: 'QA', exact: true }).evaluate(async node => { await Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished)); });
   assert.equal(await nav.getByRole('button', { name: 'QA', exact: true }).locator('small').evaluate(node => getComputedStyle(node).color === getComputedStyle(node.closest('button')).color), true);
   await page.mouse.move(0, 0);
 

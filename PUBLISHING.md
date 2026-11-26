@@ -9,6 +9,15 @@ Run `npm run build`. Every build refreshes these same paths:
 
 Existing browser installs loaded from another directory need a one-time move to the stable directory, or you can copy the contents of `release/chromium/` into their original loaded directory to preserve that installation's ID and storage.
 
+## Versions and GitHub releases
+
+- Set an exact version: `npm run version:set -- 0.0.1`.
+- Bump locally: `npm run version:set -- patch`.
+- Push to `main`: CI checks both operating systems and browser behavior, then automatically bumps the patch version, rebuilds, commits the stable packages, tags the version, and uploads the three packages plus checksums to GitHub Releases. An explicit version change in the push is preserved; this reset publishes `0.0.1`.
+- Pull `main` after the workflow completes. The bot uses the built-in GitHub token, whose pushes do not trigger recursive workflow runs. An outdated run fails without overwriting newer commits.
+
+These commands synchronize npm metadata, the lockfile, and both extension manifests. Builds remain reproducible and never change the version themselves. Store publishing still requires the same listing and a strictly higher version; resetting to `0.0.1` cannot replace an already-published higher version.
+
 ## Chrome Web Store
 
 1. Register at the [Developer Dashboard](https://chrome.google.com/webstore/devconsole) and upload `release/Mockend-Chrome.zip`.

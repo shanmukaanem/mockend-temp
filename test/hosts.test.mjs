@@ -37,7 +37,7 @@ test('Chromium host starts only the selected tab, reloads scenarios, and handles
   const otherTab = { ...tab, id: 41 };
   let selectedTab = tab;
   globalThis.chrome = {
-    windows: { WINDOW_ID_CURRENT: -2 },
+    windows: { WINDOW_ID_CURRENT: -2, getLastFocused: async () => ({ id: 4 }) },
     sidePanel: { setPanelBehavior: async () => {}, open: async options => openedPanels.push(options), close: async options => {
       closedPanels.push(options);
     } },
@@ -74,11 +74,14 @@ test('Chromium host starts only the selected tab, reloads scenarios, and handles
   try {
     await import('../src/chromium/background.mjs');
     listeners.command.emit('other-command', { windowId: 4 });
-    listeners.command.emit('open-mockend', { windowId: 4 });
-    listeners.command.emit('open-mockend');
+    await Promise.all(listeners.command.emit('open-mockend', { windowId: 4 }));
+    await Promise.all(listeners.command.emit('toggle-mockend-global'));
+    await Promise.all(listeners.command.emit('toggle-mockend-global'));
     listeners.message.emit({ app: 'mockroute', action: 'page-shortcut' }, { id: 'fixture', url: tab.url, tab }, () => {});
     listeners.message.emit({ app: 'mockroute', action: 'page-shortcut' }, { id: 'different', url: tab.url, tab }, () => {});
-    assert.deepEqual(openedPanels, [{ windowId: 4 }, { windowId: -2 }]);
+    assert.deepEqual(openedPanels, [{ windowId: 4 }, { windowId: 4 }]);
+    assert.deepEqual(closedPanels, [{ windowId: 4 }]);
+    closedPanels.length = 0;
     const [handled] = listeners.message.emit({ app: 'mockroute', action: 'state' }, { id: 'different', url: panelUrl }, () => assert.fail());
     assert.equal(handled, false);
     const initial = await request('state');

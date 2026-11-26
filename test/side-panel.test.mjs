@@ -690,7 +690,7 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.equal(await rows.count(), 1);
   assert.ok(await rows.getByText('related', { exact: true }).isVisible());
   await page.locator('#base-url-toggle').click();
-  assert.equal(await baseMenu.getByRole('checkbox', { name: 'https://api-other.test', exact: true }).isChecked(), true);
+  assert.equal(await baseMenu.getByRole('checkbox', { name: 'api-other.test', exact: true }).isChecked(), true);
   await baseMenu.getByRole('checkbox', { name: /^Current Base URL/ }).check();
   assert.equal(await rows.count(), 2);
   await page.keyboard.press('Escape');
@@ -885,8 +885,9 @@ test('app profiles isolate requests and Envs, expose mapped URLs, and split/merg
   await page.evaluate(() => new Promise(requestAnimationFrame));
   await page.getByRole('button', { name: 'Settings', exact: true }).hover();
   const transitions = await nav.evaluate(node => node.getAnimations({ subtree: true }).filter(animation => animation instanceof CSSTransition).map(animation => animation.effect.getTiming().duration));
-  assert.ok(transitions.includes(150), JSON.stringify({ transitions, style: await nav.evaluate(node => ({ left: getComputedStyle(node, '::before').left, transition: getComputedStyle(node, '::before').transition, pointer: node.hasAttribute('data-pointer-motion') })) }));
+  assert.ok(transitions.includes(130), JSON.stringify({ transitions, style: await nav.evaluate(node => ({ left: getComputedStyle(node, '::before').left, transition: getComputedStyle(node, '::before').transition, pointer: node.hasAttribute('data-pointer-motion') })) }));
   assert.equal(await page.getByRole('button', { name: 'Requests', exact: true }).getAttribute('aria-current'), 'page');
+  assert.equal(await page.getByRole('button', { name: 'Requests', exact: true }).evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 30, 26)');
   await page.waitForFunction(() => {
     const nav = document.querySelector('nav.workspace-tabs');
     return Math.abs(parseFloat(getComputedStyle(nav, '::before').left) - nav.querySelector('[data-view="settings"]').offsetLeft) <= 1;
@@ -959,6 +960,13 @@ test('app profiles isolate requests and Envs, expose mapped URLs, and split/merg
   await manage('@export');
   await page.waitForTimeout(50);
   assert.equal(backup.applications.length, 2);
+  assert.equal(await page.locator('#managed-application button').count(), 2);
+  assert.equal(await page.locator('#managed-application button:disabled').count(), 0);
+  for (const width of [320, 360, 620, 1000]) {
+    await page.setViewportSize({ width, height: 760 });
+    assert.ok(await page.locator('#manage-apps-dialog').evaluate(node => { const rect = node.getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth && node.scrollWidth <= node.clientWidth; }), `App manager fits ${width}px`);
+    await page.screenshot({ path: resolve(import.meta.dirname, `../test-results/manage-apps-${width}.png`), animations: 'disabled' });
+  }
   await page.screenshot({ path: resolve(import.meta.dirname, '../test-results/manage-apps.png'), animations: 'disabled' });
   assert.deepEqual(errors, []);
 });

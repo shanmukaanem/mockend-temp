@@ -14,6 +14,8 @@ No build tools are needed to install these packages:
 
 Every `npm run build` refreshes **release/chromium/** and the same package filenames. Load that browser folder once and use Reload for future builds. Run `npm run update:vscode` to update the VS Code package in place, then Reload Window. See [the short update and publishing guide](PUBLISHING.md).
 
+Version metadata is synchronized with `npm run version:set -- 0.0.1` (or `patch`). After each push to `main`, passing CI automatically increments the patch version unless that push explicitly changed it, rebuilds both extensions, commits the stable packages, and publishes a tagged GitHub release. Pull `main` before your next change to include the generated release commit. GitHub release automation does not publish to extension stores or update locally installed extensions.
+
 **Proprietary:** use of the extensions is permitted under [LICENSE](LICENSE); modification and redistribution are restricted. Keep the full offline source bundle and repository private if you do not want to publish source.
 
 ## Start here
@@ -39,7 +41,7 @@ Open [the checkout demo](http://127.0.0.1:4319/) after the last command. Press C
 
 | Platform | Install a build |
 | --- | --- |
-| Chrome or Edge | Use the stable `release/chromium/` after a local build. For the prebuilt browser ZIP in `release/`, extract it and select its `Mockend-Chrome/` folder. Open `chrome://extensions` or `edge://extensions`, enable Developer mode, and choose **Load unpacked**. Select the folder containing `manifest.json`. |
+| Chrome or Edge | Use the stable `release/chromium/` after a local build. For the prebuilt browser ZIP in `release/`, extract it and select the folder containing `manifest.json`. Open `chrome://extensions` or `edge://extensions`, enable Developer mode, and choose **Load unpacked**. Select the folder containing `manifest.json`. |
 | VS Code Desktop 1.112+ | Run **Extensions: Install from VSIX…** in the Command Palette and select `release/Mockend.vsix`, or the VSIX in `dist/` after a local build. Open **Mockend** in the Activity Bar or run **Mockend: Open**. |
 
 After changing code, run `npm run build` again. In Chrome or Edge, click **Reload** on the extension card and reopen its panel. In VS Code, install the rebuilt VSIX and run **Developer: Reload Window**. Keep the Chrome or Edge unpacked extension at the same path when updating it to retain the existing installation.
@@ -52,9 +54,9 @@ Mockend requests **Ctrl+Shift+M** as its default and provides **Ctrl+Shift+Y** a
 
 Use the **Open Mockend in new tab** icon to open a full browser tab that stays connected to the original app tab. In Chrome 141 and later, opening the tab also closes the sidebar.
 
-## Apps and Env in 1.5.6
+## Apps and Env
 
-Use **App / profile** at the top left to switch apps. The picker contains only app names and **Manage apps**. The manager provides **New app**, **Rename app**, **Merge app**, **Split Envs into app**, and complete workspace **Export all apps / Import apps**. Each app has its own Envs, Flows, settings, and request history. Switching stops the previous app's mocks and opens its configured launch URL when one is saved.
+Use **App / profile** at the top left to switch apps. The picker contains only app names and **Manage apps**. The manager uses the same compact list/detail layout as Env settings, with an Active badge and direct actions. It provides **New app**, **Rename app**, **Merge app**, **Split Envs into app**, and complete workspace **Export all apps / Import apps**. Each app has its own Envs, Flows, settings, and request history. Switching stops the previous app's mocks and opens its configured launch URL when one is saved.
 
 Rules now store endpoint paths such as `/api/auth/me`. Env supplies the host: the same rule can target `https://local.example/api/auth/me` or `https://dev.example/api/auth/me` by switching Env. Creating a mock from a full URL adds its origin to the selected Env automatically. Existing concrete URL rules upgrade to paths; source origins are retained as Env mappings. Wildcard-host legacy rules retain their explicit matching behavior. A local pre-upgrade backup is retained when storage permits.
 
@@ -81,11 +83,11 @@ The editor previews Base URL, Path, Endpoint, and the complete resolved targets.
 
 Builds keep only stable filenames in `release/`: `chromium/`, `Mockend.vsix`, `Mockend-Chrome.zip`, `Mockend.zip`, and `SHA256SUMS`. Versioned packages are generated only in `dist/`; duplicate versioned archives are removed from `release/` automatically.
 
-## Tables in 1.5.6
+## Tables
 
 Column dividers transfer width only between their two neighboring columns. Pointer and keyboard resizing preserve the combined width; minimum widths stop the divider before either neighbor becomes unreadable. Env starts at a compact four-character width. Env, Method, Type, and Status keep stable defaults during automatic sizing but remain manually adjustable; unrelated dividers do not change them. Every internal divider stays visible and supports pointer or keyboard resizing. Header labels and cells share the same left inset.
 
-Both tables keep records at a uniform height and clip overflowing text without ellipsis. Tables fit all columns within the viewport before expanding text columns. Method (76px), Base URL (160px), Type (84px), and Status (88px) start at stable default widths. They can be resized manually and do not grow automatically with record contents or the viewport. Text columns shrink to their minimums first; narrower viewports scroll with the final controls pinned. Sort indicators have reserved space and never change a column width. Empty messages appear inside the tables. Only the top table corners are rounded, and headers stay pinned while records scroll. Names and endpoints use flexible widths; full values remain available in tooltips and editors. Drag a column divider or focus it and use Left/Right (Shift for one-pixel steps), Home, or End to resize. Double-click a divider to restore its default width. Requests and Rules remember widths independently. Toolbar controls use icons and content-sized widths below 960px; wider panels show text beside the icons. URL input and the combined view-tab strip stay aligned on one row. Requests keep the always-visible stacked cURL / Mock split button at the row end, without delete buttons or a separate Actions column. Rules expose only a delete icon; click a rule name or row to edit it. Dropdowns show selected options first. Their controls and pickers share a width based on the longest option, bounded by the available layout; clipped values have tooltips. Filter option trays also place checked choices first. Tabs use the same 24px height as compact buttons. Component contents use shared leading padding for consistent alignment. Base URL, Path, and Endpoint selectors live outside Filters. Path and Endpoint start with all values selected and show selected/total counts.
+Both tables keep records at a uniform height and clip overflowing text without ellipsis. Tables fit all columns within the viewport before expanding text columns. Method (76px), Base URL (160px), Type (84px), and Status (88px) start at stable default widths. They can be resized manually and do not grow automatically with record contents or the viewport. Text columns shrink to their minimums first; narrower viewports scroll with the final controls pinned. Sort indicators have reserved space and never change a column width. Empty messages appear inside the tables. Only the top table corners are rounded, and headers stay pinned while records scroll. Names and endpoints use flexible widths; full values remain available in tooltips and editors. Drag a column divider or focus it and use Left/Right (Shift for one-pixel steps), Home, or End to resize. Double-click a divider to restore its default width. Requests and Rules remember widths independently. Toolbar controls use icons and content-sized widths below 960px; wider panels show text beside the icons. URL input and the combined view-tab strip stay aligned on one row. Requests keep the always-visible stacked cURL / Mock split button at the row end, without delete buttons or a separate Actions column. Rules expose only a delete icon; click a rule name or row to edit it. Dropdowns show selected options first. Their controls and pickers share a width based on the longest option, bounded by the available layout; clipped values have tooltips. Filter option trays also place checked choices first. Tabs use the same 24px height as compact buttons. Component contents use shared leading padding for consistent alignment. Base URL, Path, and Endpoint selectors live outside Filters. Path and Endpoint start with all values selected and show selected/total counts. Base URL, Path, and Endpoint trays each have their own search. API origins display without the HTTP(S) scheme; stored URLs and editable URL fields keep it.
 
 Rules uses sortable rows with name, method, Base URL / Path, Endpoint, type, status, delay, enabled switch, and a small delete icon. Click a row or its name to edit. Sorting changes the display only; ID shows matching priority. Search rule names, URLs, request conditions, headers, and response contents; use URL to search only the URL or .* for regex. Requests and Rules keep independent search and filters. When search or filters are active, **Invert Filter Result** shows their complement within the selected Base URLs. The split mock control has distinct **filtered** and **all** actions: filtered changes only the currently displayed rows, including inverted filter results; **Enable all mocks / Disable all mocks** changes every rule in the active Flow, including hidden records.
 
@@ -177,7 +179,7 @@ If you only need the build and unit tests, run `npm run build` and `npm test` wi
 | `test/` | Unit, host, browser, and panel tests |
 | `examples/` | Checkout demo and importable flows |
 | `scripts/` | Build and packaging scripts |
-| `release/` | Prebuilt 1.5.6 installers shipped with the full project ZIP |
+| `release/` | Prebuilt installers shipped with the full project ZIP |
 
 Edit `src/`, then rebuild and reload the target extension. `build/chromium/` is the unpacked browser extension, `build/vscode/` stages the VS Code extension, and `dist/` contains the new Chrome ZIP, VSIX, and combined ZIP. The build replaces both generated directories. Every build also refreshes the stable directory and package filenames in `release/`.
 
@@ -200,3 +202,7 @@ CI and local commands verify source behavior and package consistency. The VS Cod
 Platform documentation: [Chrome debugger](https://developer.chrome.com/docs/extensions/reference/api/debugger), [Edge sideloading](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading), [VS Code Integrated Browser](https://code.visualstudio.com/docs/debugtest/integrated-browser), [VSIX installation](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#_install-from-a-vsix).
 
 Use **Ctrl + +** or **Ctrl + −** to zoom the panel, and **Ctrl + 0** to reset it. On macOS, use Command.
+
+### Shortcut scope
+
+`Ctrl+Shift+M` toggles Mockend in supported browsers and VS Code, including Control on macOS. Browser and operating system shortcuts can take precedence. For an OS-wide browser shortcut, open **Manage browser shortcuts**, clear any conflicting binding, assign `Ctrl+Shift+M` to **Toggle Mockend (global shortcut)** and choose **Global** where the browser supports it. Chrome only permits numbered keys as suggested global defaults, and ChromeOS does not support global commands. VS Code keybindings work while VS Code is focused; an extension cannot register an OS-wide hotkey through VS Code's API.

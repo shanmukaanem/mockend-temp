@@ -1,3 +1,5 @@
+import { mountOptionSearch } from '../ui/option-search.mjs';
+import { baseUrlLabel } from '../ui/url-label.mjs';
 import { measureTrayWidth } from '../ui/tray-size.mjs';
 import { selectedFirst } from '../ui/dropdowns.mjs';
 import { urlParts } from '../core/url-parts.mjs';
@@ -61,6 +63,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   const baseMenu = byId('base-url-menu');
   mountHoverTray(baseToggle, baseMenu);
   const baseOptions = byId('base-url-options');
+  const searchBases = mountOptionSearch(baseMenu, baseOptions, 'Search Base URLs');
   const selectAllBases = baseMenu.querySelector('[data-url="*"] input');
   let baseUrls = new Set(['current']);
   const clearRequests = byId('clear-requests');
@@ -293,7 +296,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
     urlCell.title = url;
     const path = document.createElement('span');
     path.className = 'mono';
-    path.textContent = parts.baseUrl;
+    path.textContent = baseUrlLabel(parts.baseUrl);
     const domain = document.createElement('small');
     domain.textContent = parts.ingress === '/' ? '' : parts.ingress;
     const inspect = document.createElement('button');
@@ -428,16 +431,17 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
         const input = document.createElement('input');
         input.type = 'checkbox';
         const name = document.createElement('span');
-        name.textContent = text;
+        name.textContent = baseUrlLabel(text);
         const detail = document.createElement('small');
         name.append(detail);
         option.append(input, name);
         baseOptions.append(option);
       }
       option.querySelector('input').checked = baseUrls.has('*') || baseUrls.has(url);
-      option.querySelector('small').textContent = subtitle ?? '';
+      option.querySelector('small').textContent = baseUrlLabel(subtitle ?? '');
     }
     selectedFirst(baseOptions, 'label', label => label.querySelector('input').checked);
+    searchBases();
   }
 
   baseMenu.addEventListener('change', event => {

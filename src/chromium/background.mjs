@@ -294,14 +294,20 @@ chrome.sidePanel.onOpened?.addListener(({ windowId }) => openPanels.add(windowId
 chrome.sidePanel.onClosed?.addListener(({ windowId }) => openPanels.delete(windowId));
 chrome.windows.onRemoved?.addListener(windowId => openPanels.delete(windowId));
 
-chrome.commands.onCommand.addListener((command, tab) => {
-  if (command !== 'open-mockend' && command !== 'toggle-mockend-fallback') return;
-  const windowId = Number.isInteger(tab?.windowId) ? tab.windowId : chrome.windows.WINDOW_ID_CURRENT;
-  const connected = [...clients].some(client => client.windowId === windowId && client.tabId === undefined);
-  if (chrome.sidePanel.close && (openPanels.has(windowId) || (!chrome.sidePanel.onClosed && connected))) {
-    openPanels.delete(windowId);
-    void chrome.sidePanel.close({ windowId }).catch(() => {});
-  } else {
-    void chrome.sidePanel.open({ windowId }).then(() => openPanels.add(windowId)).catch(() => {});
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (!['open-mockend', 'toggle-mockend-fallback', 'toggle-mockend-global'].includes(command)) return;
+  try {
+    const windowId = Number.isInteger(tab?.windowId) ? tab.windowId : (await chrome.windows.getLastFocused({ windowTypes: ['normal'] })).id;
+    if (!Number.isInteger(windowId)) return;
+    const connected = [...clients].some(client => client.windowId === windowId && client.tabId === undefined);
+    if (chrome.sidePanel.close && (openPanels.has(windowId) || (!chrome.sidePanel.onClosed && connected))) {
+      await chrome.sidePanel.close({ windowId });
+      openPanels.delete(windowId);
+    } else {
+      await chrome.sidePanel.open({ windowId });
+      openPanels.add(windowId);
+    }
+  } catch (error) {
+    console.warn('Unable to toggle Mockend panel:', error.message);
   }
 });

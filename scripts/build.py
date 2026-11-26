@@ -19,6 +19,7 @@ def archive(destination, files):
     with ZipFile(destination, "w") as output:
         for name, content in sorted(files.items()):
             record = ZipInfo(name, (2026, 1, 1, 0, 0, 0))
+            record.create_system = 3  # Stable Unix ZIP metadata on every build OS.
             record.compress_type = ZIP_DEFLATED
             record.external_attr = 0o100644 << 16
             output.writestr(record, content)

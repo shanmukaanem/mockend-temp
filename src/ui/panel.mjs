@@ -1,3 +1,4 @@
+import { baseUrlLabel } from './url-label.mjs';
 import { selectedFirst, fitSelect, prepareSelect, replaceSelectOptions, longestOptionWidth, clippedSelectValue, clippedControlValue, mountSelectLayouts } from './dropdowns.mjs';
 import { urlParts } from '../core/url-parts.mjs';
 import { measureTrayWidth } from './tray-size.mjs';
@@ -92,7 +93,7 @@ function renderConnection() {
   setControlLabel($('toggle'), active ? 'Stop mocking' : 'Start mocking');
   $('toggle').disabled = busy || !connection || (browser && !current);
   $('application').disabled = busy || !state?.config;
-  $('managed-application').disabled = busy || !state?.config;
+  for (const control of $('managed-application').querySelectorAll('button')) control.disabled = busy || !state?.config;
   for (const control of document.querySelectorAll('[data-application-action]')) control.disabled = busy ||
     (control.dataset.applicationAction === '@merge' && (state?.applications?.length ?? 1) < 2) ||
     (control.dataset.applicationAction === '@split' && (state?.config.environments?.length ?? 0) < 2);
@@ -114,8 +115,16 @@ function renderConfig() {
   const apps = state.applications ?? [{ id: 'default', name: 'My App' }];
   replaceSelectOptions($('application'), ...apps.map(app => new Option(app.name, app.id)), new Option('Manage apps…', '@manage'));
   $('application').value = state.applicationId ?? 'default';
-  replaceSelectOptions($('managed-application'), ...apps.map(app => new Option(app.name, app.id)));
-  $('managed-application').value = state.applicationId ?? 'default';
+  $('managed-application').replaceChildren(...apps.map(app => {
+    const row = button('environment-option', '', () => { void selectApplication(app.id); }, app.name);
+    row.removeAttribute('title'); row.disabled = busy;
+    row.setAttribute('aria-pressed', String(app.id === state.applicationId));
+    const caption = element('span'); caption.append(element('strong', '', app.name), element('small', '', app.url ? baseUrlLabel(app.url) : 'App profile'));
+    row.append(caption);
+    if (app.id === state.applicationId) row.append(element('span', 'environment-active', 'Active'));
+    return row;
+  }));
+  $('managed-app-name').textContent = apps.find(app => app.id === state.applicationId)?.name ?? 'My App';
   $('managed-app-summary').textContent = `${config.environments?.length ?? 0} Envs · ${config.scenarios.length} Flows · ${config.scenarios.reduce((count, flow) => count + flow.rules.length, 0)} rules`;
   document.querySelector('[data-application-action="@merge"]').disabled = apps.length < 2;
   document.querySelector('[data-application-action="@split"]').disabled = (config.environments?.length ?? 0) < 2;
@@ -176,7 +185,7 @@ function editApplication(mode) {
   $('application-envs').hidden = mode !== 'split';
   $('application-envs').replaceChildren(element('legend', '', 'Envs to move'), ...(state.config.environments ?? []).map(env => {
     const label = element('label', 'check'); const input = element('input'); input.type = 'checkbox'; input.name = 'environmentIds'; input.value = env.id;
-    label.append(input, document.createTextNode(`${env.name} · ${env.baseUrls.join(', ')}`)); return label;
+    label.append(input, document.createTextNode(`${env.name} · ${env.baseUrls.map(baseUrlLabel).join(', ')}`)); return label;
   }));
   $('application-help').textContent = mode === 'merge' ? 'Move this app’s Envs and Flows into the selected app. The destination app keeps its settings; the source app is removed.'
     : mode === 'split' ? 'Move selected Envs into a new app and copy reusable Flows. Keep at least one Env here. Each app’s rules retain only its own Env references.'
@@ -216,7 +225,6 @@ $('application').addEventListener('change', async event => {
   await selectApplication(id);
 });
 for (const control of document.querySelectorAll('[data-application-action]')) control.addEventListener('click', () => { void manageApplicationAction(control.dataset.applicationAction); });
-$('managed-application').addEventListener('change', event => { void selectApplication(event.target.value); });
 for (const id of ['close-app-manager', 'done-app-manager']) $(id).addEventListener('click', () => $('manage-apps-dialog').close());
 $('manage-apps-dialog').addEventListener('close', () => $('application').focus());
 $('cancel-application').addEventListener('click', () => $('application-dialog').close());
@@ -291,7 +299,7 @@ function renderEnvironments() {
   $('environment-url-rows').replaceChildren(...selected.baseUrls.map(origin => {
     const row = element('tr');
     const service = element('td', '', selected.services?.[origin] ?? '—');
-    const url = element('td', 'environment-origin', origin); url.title = origin;
+    const url = element('td', 'environment-origin', baseUrlLabel(origin)); url.title = origin;
     const actions = element('td', 'environment-url-actions');
     row.dataset.origin = origin;
     const key = `${selected.id} ${origin}`;
@@ -559,7 +567,7 @@ function syncRuleEnvironment(form) {
   const targets = ruleUrls({ url, environmentScope: scope, environmentIds: ids }, state.config);
   const bases = [...new Set(targets.map(target => urlParts(target).baseUrl).filter(Boolean))];
   if (!bases.length && !state.config.environments?.length && ruleDraft?.baseUrl) bases.push(ruleDraft.baseUrl);
-  $('rule-base-preview').textContent = bases.join(', ');
+  $('rule-base-preview').textContent = bases.map(baseUrlLabel).join(', ');
   $('rule-base-preview').dataset.tooltip = bases.join(', ');
   $('rule-ingress-preview').textContent = parts.ingress === '/' ? '' : parts.ingress;
   $('rule-endpoint-preview').textContent = parts.endpoint === '/' ? '' : parts.endpoint;
@@ -716,7 +724,7 @@ function renderRule(item) {
   const method = element('span', 'method-badge mono', rule.method === '*' ? 'ANY' : rule.method); method.dataset.method = rule.method;
   cell(method);
   const base = cell('', 'request-url'); base.title = rule.url;
-  base.append(element('span', 'mono', item.baseUrl || 'Relative URL'), element('small', 'mono', item.ingress === '/' ? '' : item.ingress));
+  base.append(element('span', 'mono', baseUrlLabel(item.baseUrl) || 'Relative URL'), element('small', 'mono', item.ingress === '/' ? '' : item.ingress));
   const endpoint = cell(item.endpoint === '/' ? '' : item.endpoint, 'endpoint-name mono'); endpoint.title = rule.url;
   cell(element('span', 'type-badge', item.type));
   const status = element('span', 'request-code mono', item.status || 'Failed'); status.dataset.family = Math.floor(item.status / 100);
@@ -1834,7 +1842,7 @@ if (browser) {
   const refreshShortcut = async () => {
     const commands = await chrome.commands?.getAll();
     const shortcuts = commands?.filter(({ name, shortcut }) => shortcut &&
-      (name === 'open-mockend' || name === 'toggle-mockend-fallback')).map(({ shortcut }) => shortcut);
+      (name === 'open-mockend' || name === 'toggle-mockend-fallback' || name === 'toggle-mockend-global')).map(({ shortcut }) => shortcut);
     $('browser-shortcut').textContent = shortcuts?.join(' / ') || 'Unassigned · try Ctrl+Shift+Y';
     $('browser-shortcut-settings').hidden = false;
   };

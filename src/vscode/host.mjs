@@ -7,6 +7,7 @@ let platform;
 
 export function activate(vscode, context) {
   let panel;
+  let controlView;
   const publish = recording => { void panel?.postMessage({ recording }); };
   platform = createIntegratedBrowser(vscode, publish);
   const controller = new Controller({
@@ -18,6 +19,7 @@ export function activate(vscode, context) {
   });
   const provider = {
     async resolveWebviewView(view) {
+      controlView = view;
       const webview = view.webview;
       panel = webview;
       const base = context.extensionUri;
@@ -72,13 +74,14 @@ export function activate(vscode, context) {
         }
       });
       view.onDidDispose(() => {
-        if (panel === webview) panel = undefined;
+        if (panel === webview) { panel = undefined; controlView = undefined; }
         receiver.dispose();
       });
     }
   };
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('mockend.control', provider, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.commands.registerCommand('mockend.toggle', () => vscode.commands.executeCommand(controlView?.visible ? 'workbench.action.closeSidebar' : 'mockend.control.focus')),
     vscode.commands.registerCommand('mockend.open', () => vscode.commands.executeCommand('mockend.control.focus')),
     vscode.commands.registerCommand('mockend.stop', () => controller.dispatch('stop'))
   );

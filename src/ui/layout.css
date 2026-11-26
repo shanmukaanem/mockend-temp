@@ -292,18 +292,17 @@ input:not([type="checkbox"], [type="radio"], [type="hidden"]):is(:focus, :active
 input:not([type="checkbox"], [type="radio"], [type="hidden"]):focus-visible, textarea:not(.code-viewport):focus-visible { text-decoration: none; }
 input:not([type="checkbox"], [type="radio"], [type="hidden"]):focus-visible:not([aria-invalid="true"]), textarea:not(.code-viewport):focus-visible:not([aria-invalid="true"]) { outline: 1px solid var(--muted); outline-offset: 1px; }
 
-/* A native anchored pill follows pointer interest; ARIA selection stays unchanged. */
+/* The selected tab stays black while pointer interest has its own softer indicator. */
+.sliding-tabs > button { position: relative; z-index: 1; }
+.sliding-tabs > button:is([aria-current], [aria-selected="true"]) { background: var(--accent) !important; color: var(--on-accent) !important; }
 @supports (position-anchor: --tab) and (inset-inline-start: anchor(self-start)) {
-  .sliding-tabs > button:is([aria-current], [aria-selected="true"]) { anchor-name: var(--tab-indicator-anchor); }
-  .sliding-tabs:has(> button:hover:not(:disabled)) > button:is([aria-current], [aria-selected="true"]) { anchor-name: none; }
-  .sliding-tabs:has(> button:hover:not(:disabled)) > button:hover:not(:disabled) { anchor-name: var(--tab-indicator-anchor); }
-  html .workspace-tabs.sliding-tabs::before { display: block; position: absolute; position-anchor: var(--tab-indicator-anchor); inset-block: 0; inset-inline-start: anchor(self-start); inset-inline-end: anchor(self-end); width: auto; transform: none; border-radius: 6px; z-index: 0; }
-  .sliding-tabs > button { position: relative; z-index: 1; background: transparent !important; color: var(--ink) !important; }
-  .sliding-tabs > button:is([aria-current], [aria-selected="true"]) { color: var(--on-accent) !important; }
-  .sliding-tabs:has(> button:hover:not(:disabled)) > button { color: var(--ink) !important; }
-  .sliding-tabs:has(> button:hover:not(:disabled)) > button:hover:not(:disabled) { color: var(--on-accent) !important; }
+  .sliding-tabs > button:hover:not(:disabled) { anchor-name: var(--tab-indicator-anchor); }
+  html .workspace-tabs.sliding-tabs::before { display: block; position: absolute; position-anchor: var(--tab-indicator-anchor); inset-block: 0; inset-inline-start: anchor(self-start); inset-inline-end: anchor(self-end); width: auto; transform: none; border-radius: 8px; z-index: 0; background: var(--hover-ink); opacity: 0; }
+  html .workspace-tabs.sliding-tabs:has(> button:hover:not(:disabled))::before { opacity: 1; }
+  .sliding-tabs > button:not([aria-current], [aria-selected="true"]) { background: transparent !important; }
+  .sliding-tabs > button:hover:not(:disabled) { color: var(--on-accent) !important; }
   @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
-    .sliding-tabs[data-pointer-motion]::before { transition: inset-inline-start 150ms cubic-bezier(0.23, 1, 0.32, 1), inset-inline-end 150ms cubic-bezier(0.23, 1, 0.32, 1) !important; }
+    .sliding-tabs[data-pointer-motion]::before { transition: inset-inline-start 130ms cubic-bezier(0.23, 1, 0.32, 1), inset-inline-end 130ms cubic-bezier(0.23, 1, 0.32, 1), opacity 130ms ease !important; }
   }
 }
 @media (forced-colors: active) {
@@ -409,7 +408,7 @@ input:not([type="checkbox"], [type="radio"], [type="hidden"]):focus-visible:not(
 #scenario-menu, .scope-menu, .base-url-menu { width: max-content; min-width: 0; }
 .scenario-option .scenario-action { width: 22px; min-width: 22px; height: 22px; min-height: 22px; padding: 4px; }
 .scenario-option .scenario-action svg { width: 12px; height: 12px; }
-button:is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) :is(small, .section-count, .scope-count) { color: var(--on-accent); }
+button:is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) :is(small, .section-count, .scope-count) { color: inherit; }
 
 button:is(#filter-toggle, #rules-filter-toggle):is(:hover, :focus-visible, [aria-expanded="true"]) :is(#filter-count, #rules-filter-count) { background: transparent; color: var(--on-accent); }
 
@@ -490,3 +489,63 @@ select { inline-size: min(100%, var(--select-option-width, 100%)); max-inline-si
 :is(.scope-menu .facet-options label, .base-url-menu label) { border-radius: 5px; }
 :is(.scope-menu .facet-options label, .base-url-menu label):is(:hover, :has(:checked)) { background: var(--accent); color: var(--on-accent); }
 :is(.scope-menu .facet-options label, .base-url-menu label):is(:hover, :has(:checked)) input:checked { background: var(--on-accent); color: var(--accent); }
+
+/* Joined action groups use dark dividers and soft outer corners. */
+button:is(.primary, .secondary, .danger, .compact-control, .toolbar-icon), .workspace-tabs, .workspace-tabs > button, .application-picker select, input:not([type="checkbox"], [type="radio"]), textarea { border-radius: var(--control-radius); }
+
+:root { --hover-ink: color-mix(in srgb, var(--accent) 86%, var(--paper)); --control-radius: 8px; }
+:is(.capture-controls, .transfer-controls, .split-actions, .mock-split, .environment-actions, .app-management-actions, .app-transfer-actions, .url-selectors) { display: inline-flex; gap: 0; border-radius: var(--control-radius); }
+:is(.capture-controls, .transfer-controls, .split-actions, .mock-split, .environment-actions, .app-management-actions, .app-transfer-actions, .url-selectors) > button { border-radius: 0; margin: 0; }
+:is(.capture-controls, .transfer-controls, .split-actions, .mock-split, .environment-actions, .app-management-actions, .app-transfer-actions, .url-selectors) > button:not(:first-of-type) { border-inline-start: 1px solid var(--ink); }
+:is(.capture-controls, .transfer-controls, .split-actions, .mock-split, .environment-actions, .app-management-actions, .app-transfer-actions, .url-selectors) > button:first-of-type { border-start-start-radius: var(--control-radius); border-end-start-radius: var(--control-radius); }
+:is(.capture-controls, .transfer-controls, .split-actions, .mock-split, .environment-actions, .app-management-actions, .app-transfer-actions, .url-selectors) > button:last-of-type { border-start-end-radius: var(--control-radius); border-end-end-radius: var(--control-radius); }
+.mock-split > #toggle-all-mocks { border-inline-start-color: var(--ink); }
+.scenario-option { padding: 6px; column-gap: 0; border-radius: 8px; }
+.scenario-option .scenario-action { border-radius: 0; border-inline-start: 1px solid var(--ink); }
+.scenario-option .scenario-choice + .scenario-action { border-start-start-radius: 6px; border-end-start-radius: 6px; }
+.scenario-option .scenario-action:last-child { border-start-end-radius: 6px; border-end-end-radius: 6px; }
+.scenario-choice { padding-inline: 8px; }
+:is(.dropdown-control, .parameter-picker-toggle, #rule-environment-scope, #scenario) { justify-content: space-between; }
+:is(.dropdown-control, .parameter-picker-toggle, #rule-environment-scope, #scenario)::after { margin-inline-start: auto; margin-inline-end: 0; }
+select::picker-icon { margin-inline-start: auto; }
+.tray-search { position: sticky; top: 0; z-index: 3; display: block; padding-block-end: 6px; background: var(--surface); }
+.tray-search input { display: block; width: 100%; min-width: 0; margin: 0; padding-inline: 8px; }
+.scope-menu .scope-menu-header { top: 30px; }
+.base-url-menu-tools { top: 30px; }
+.app-manager-workspace { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr); gap: 8px; }
+.app-profile-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-height: 400px; overflow: auto; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--tint) 48%, var(--paper)); }
+.app-profile-list > button { flex: none; }
+.app-profile-detail { display: flex; flex-direction: column; gap: 12px; }
+.app-profile-detail h3 { font-size: 13px; }
+.app-profile-detail .app-management-actions { align-self: start; flex-wrap: wrap; row-gap: 4px; }
+@media (max-width: 520px) {
+  .app-manager-workspace { grid-template-columns: minmax(0, 1fr); }
+  .app-profile-list { flex-direction: row; max-height: none; }
+  .app-profile-list > button { width: 155px; }
+}
+@media (hover: hover) and (pointer: fine) {
+  html button:is(#record-toggle, #toggle, #scenario, #new-scenario, button):hover:not(:disabled):not([data-sort], [data-rule-sort], .rule-main, .request-inspect, .code-fold, .fold-ellipsis),
+  html :is(.scope-menu .facet-options label, .base-url-menu label, .rule-env-menu label):hover { background: var(--hover-ink); color: var(--on-accent); }
+  html .workspace-tabs > button:is([aria-current], [aria-selected="true"]):hover { background: var(--accent) !important; }
+}
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  html button, html .scenario-choice, html .scenario-action, html .workspace-tabs button, html :is(.scope-menu, .base-url-menu, .rule-env-menu) label {
+    transition: background-color 180ms ease, color 130ms ease !important;
+  }
+  html button:hover, html :is(.scope-menu, .base-url-menu, .rule-env-menu) label:hover { transition-duration: 70ms !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html button, html .workspace-tabs::before, html :is(.scope-menu, .base-url-menu, .rule-env-menu) label { transition: none !important; }
+}
+
+#request-rows .request-row-actions .request-mock { border-block-start: 1px solid var(--ink); }
+:is(.transfer-menu, .request-filter-tree, .scope-menu, .base-url-menu) :is(button, label):focus-visible { outline: 1px solid var(--muted); outline-offset: -1px; }
+
+/* Adjacent filter actions form one group without changing the search layout. */
+.request-filters > button + button { margin-inline-start: -4px; border-inline-start: 1px solid var(--ink); border-start-start-radius: 0; border-end-start-radius: 0; }
+.request-filters > button:has(~ button:not([hidden])) { border-start-end-radius: 0; border-end-end-radius: 0; }
+
+#scenario-options { column-gap: 0; }
+
+#scenario-options { grid-template-columns: minmax(0, 1fr); }
+.scenario-option { grid-template-columns: minmax(0, 1fr) repeat(3, 22px); }
