@@ -415,7 +415,7 @@ test('request and rule tables split URLs and support independent filters', async
   assert.equal(config.settings.environmentId, config.environments[0].id);
   await page.getByRole('button', { name: 'Rules', exact: true }).click();
   await rules.first().getByRole('button', { name: 'Edit Cart with items', exact: true }).click();
-  await page.locator('#rule-environment-scope').selectOption('active');
+  assert.equal(await page.locator('#rule-base-url').count(), 0);
   assert.match(await page.locator('#rule-environment-preview').textContent(), /qa.example.org/);
   await page.locator('#response-status-toggle').click();
   assert.equal(await page.locator('#http-status-menu').getByRole('option', { name: '404 Not Found', exact: true }).count(), 1);
@@ -427,7 +427,7 @@ test('request and rule tables split URLs and support independent filters', async
   await page.screenshot({ path: resolve(screenshots, 'custom-status-editor.png'), animations: 'disabled' });
   await page.locator('#save-rule').click();
   assert.equal(config.scenarios[0].rules.find(rule => rule.id === 'filled').response.statusText, 'Controlled rejection');
-  assert.equal(config.scenarios[0].rules.find(rule => rule.id === 'filled').environmentScope, 'active');
+  assert.equal(config.scenarios[0].rules.find(rule => rule.id === 'filled').environmentScope, 'selected');
   const editedRule = rules.filter({ has: page.getByRole('button', { name: 'Edit Cart with items', exact: true }) });
   assert.ok((await editedRule.locator('td').nth(3).innerText()).includes('https://qa.example.org'));
   const sourceEnvironment = config.environments.find(env => env.baseUrls.includes('http://127.0.0.1:4319'));
@@ -669,9 +669,26 @@ test('request and rule tables split URLs and support independent filters', async
   assert.equal(await page.locator('#rule-name').evaluate(node => document.activeElement === node), true);
   const edges = await page.locator('#rule-form').evaluate(form => ['#rule-title', '.route-fields', '.rule-url-parts', '.rule-environment-controls', '#rule-tabs', '#response-section'].map(selector => form.querySelector(selector).getBoundingClientRect().left));
   assert.ok(edges.every(left => Math.abs(left - edges[0]) <= 1));
-  const parts = await page.locator('.rule-url-parts > span').evaluateAll(nodes => nodes.map(node => ({ x: node.getBoundingClientRect().x, width: node.getBoundingClientRect().width })));
-  assert.ok(Math.abs(parts[0].width - parts[1].width) <= 1 && Math.abs(parts[1].width - parts[2].width) <= 1);
+  const parts = await page.locator('.rule-url-parts > div').evaluateAll(nodes => nodes.map(node => ({ x: node.getBoundingClientRect().x, width: node.getBoundingClientRect().width })));
+  assert.equal(parts.length, 4);
+  assert.ok(parts[0].x < parts[1].x && parts[1].x < parts[2].x && parts[2].x < parts[3].x);
   await page.locator('#response-status-toggle').click();
+  const dropdownStyle = await page.evaluate(() => {
+    const control = document.querySelector('#response-status-toggle');
+    const tray = document.querySelector('#http-status-menu');
+    const select = document.querySelector('#rule-form select');
+    const style = getComputedStyle(tray);
+    const picker = getComputedStyle(select, '::picker(select)');
+    return {
+      shared: control.classList.contains('dropdown-control') && tray.classList.contains('dropdown-menu'),
+      width: Math.abs(control.getBoundingClientRect().width - tray.getBoundingClientRect().width),
+      popup: [style.padding, style.borderRadius, style.backgroundColor, style.boxShadow],
+      native: [picker.padding, picker.borderRadius, picker.backgroundColor, picker.boxShadow]
+    };
+  });
+  assert.equal(dropdownStyle.shared, true);
+  assert.ok(dropdownStyle.width <= 1, JSON.stringify(dropdownStyle));
+  assert.deepEqual(dropdownStyle.native, dropdownStyle.popup);
   await page.screenshot({ path: resolve(screenshots, 'http-status-dropdown.png'), animations: 'disabled' });
   await page.getByRole('searchbox', { name: 'Search or add HTTP status' }).fill('1000 Invalid');
   await page.getByRole('searchbox', { name: 'Search or add HTTP status' }).press('Enter');
@@ -761,6 +778,17 @@ for (const host of ['chromium', 'vscode']) test(`${host} Env setup manages servi
   assert.equal(await nav.getByRole('button').count(), 3);
   assert.equal(await page.locator('#environment-url-rows tr').count(), 3);
   assert.equal(await nav.getByRole('button', { name: 'QA', exact: true }).getByText('Active').count(), 1);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const duplicatedValues = await page.locator('select').evaluateAll(selects => selects.filter(select => select.getClientRects().length).flatMap(select => {
+    const value = select.querySelector('selectedcontent');
+    if (!value) return [];
+    const context = document.createElement('canvas').getContext('2d');
+    context.font = getComputedStyle(value).font;
+    const expected = Math.max(value.clientWidth, Math.ceil(context.measureText(value.textContent).width));
+    return value.scrollWidth > expected + 2 ? [{ id: select.id, text: value.textContent, actual: value.scrollWidth, expected }] : [];
+  }));
+  assert.deepEqual(duplicatedValues, []);
+
   assert.equal(await nav.getByRole('button', { name: 'QA', exact: true }).locator('small').evaluate(node => getComputedStyle(node).color), await page.locator('.environment-manager > .environment-heading p').evaluate(node => getComputedStyle(node).color));
   await nav.getByRole('button', { name: 'QA', exact: true }).hover();
   assert.equal(await nav.getByRole('button', { name: 'QA', exact: true }).locator('small').evaluate(node => getComputedStyle(node).color === getComputedStyle(node.closest('button')).color), true);
@@ -882,5 +910,63 @@ for (const host of ['chromium', 'vscode']) test(`${host} Env setup manages servi
   assert.equal(await page.locator('#environment-url-rows').getByText('Accounts', { exact: true }).count(), 1);
   await nav.getByRole('button', { name: 'Local', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: 'Delete base URL http://localhost:3000', exact: true }).isDisabled(), true);
+  await page.getByRole('button', { name: 'Rules', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit Cart with items', exact: true }).click();
+  const envControl = page.locator('#rule-environment-scope');
+  const envMenu = page.getByRole('group', { name: 'Rule Envs', exact: true });
+  assert.equal(await page.locator('#rule-base-url').count(), 0);
+  await envControl.click();
+  await envMenu.getByRole('checkbox', { name: 'Select all', exact: true }).check();
+  await envMenu.getByRole('checkbox', { name: 'Local', exact: true }).uncheck();
+  assert.equal(await envControl.getAttribute('value'), 'selected');
+  assert.deepEqual(await envMenu.locator('.rule-env-choices input:checked').evaluateAll(nodes => nodes.map(node => node.value)), ['qa', 'staging']);
+  const sameWidth = await envMenu.evaluate(node => Math.abs(node.getBoundingClientRect().width - document.querySelector('#rule-environment-scope').getBoundingClientRect().width));
+  assert.ok(sameWidth <= 1);
+  await page.keyboard.press('Escape');
+  await page.locator('#save-rule').click();
+  const targeted = config.scenarios[0].rules.find(rule => rule.id === 'filled');
+  assert.equal(targeted.environmentScope, 'selected');
+  assert.deepEqual(targeted.environmentIds, ['qa', 'staging']);
+  await page.getByRole('button', { name: 'Edit Cart with items', exact: true }).click();
+  await envControl.click();
+  assert.equal(await envMenu.getByRole('checkbox', { name: 'QA Team', exact: true }).isChecked(), true);
+  assert.equal(await envMenu.getByRole('checkbox', { name: 'Staging', exact: true }).isChecked(), true);
+  assert.equal(await envMenu.getByRole('checkbox', { name: 'Local', exact: true }).isChecked(), false);
+  await envMenu.getByRole('checkbox', { name: 'Select all', exact: true }).check();
+  await page.keyboard.press('Escape');
+  await page.locator('#save-rule').click();
+  assert.equal(config.scenarios[0].rules.find(rule => rule.id === 'filled').environmentScope, 'all');
+  await page.getByRole('button', { name: 'Add rule', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Rule name', exact: true }).fill('Multi Env endpoint');
+  await page.getByRole('textbox', { name: 'Request URL', exact: true }).fill('/api/very-long-endpoint-name-to-test-clipping');
+  for (const width of [320, 360, 620, 1000]) {
+    await page.setViewportSize({ width, height: 850 });
+    const fields = await page.locator('#rule-form .rule-url-parts > div').evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect(); return { x: box.x, y: box.y, right: box.right, width: box.width };
+    }));
+    assert.equal(new Set(fields.map(field => field.y)).size, 1);
+    assert.ok(await page.locator('.workspace-tabs > button').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).every(node => node.offsetHeight === 24)));
+    assert.ok(fields.every(field => field.width > 0 && field.x >= 0 && field.right <= width));
+    await envControl.click();
+    assert.ok(await envMenu.evaluate(node => Math.abs(node.getBoundingClientRect().width - document.querySelector('#rule-environment-scope').getBoundingClientRect().width)) <= 1);
+    await page.keyboard.press('Escape');
+    await envMenu.waitFor({ state: 'hidden' });
+    assert.equal(await envMenu.getByRole('checkbox', { name: 'Select all', exact: true }).isVisible(), false);
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: resolve(import.meta.dirname, `../test-results/rule-env-${host}-${width}.png`), animations: 'disabled' });
+  }
+  await page.setViewportSize({ width: 320, height: 850 });
+  await page.locator('#rule-endpoint-preview').hover();
+  await page.waitForFunction(() => document.querySelector('.styled-tooltip').matches(':popover-open'));
+  assert.match(await page.locator('.styled-tooltip').textContent(), /very-long-endpoint-name/);
+  await envControl.click();
+  const all = envMenu.getByRole('checkbox', { name: 'Select all', exact: true });
+  await all.check(); await all.uncheck();
+  await envMenu.getByRole('checkbox', { name: 'Local', exact: true }).check();
+  assert.equal(await envMenu.locator('.rule-env-choices input').first().getAttribute('value'), 'local');
+  await page.keyboard.press('Escape');
+  await page.locator('#save-rule').click();
+  assert.deepEqual(config.scenarios[0].rules.find(rule => rule.name === 'Multi Env endpoint').environmentIds, ['local']);
+
   assert.deepEqual(errors, []);
 });

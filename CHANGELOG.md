@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.6
+
+- Replace Add/Edit mock targeting modes with an Env multi-select containing Select all and named Envs; remove the separate Base URL selector.
+- Align Env, Base URL, Path, and Endpoint on one row at compact and wide widths.
+- Keep dropdown values contained, show clipped-value tooltips, and match control/picker widths to available space.
+- Move selected native, Flow, status, and filter choices to the top while preserving focus and state.
+- Reuse the HTTP status dropdown shell, positioning, and option styling across native selects, Env, Flow, and filter trays.
+- Match tab height and padding to compact 24px buttons.
+
 ## 1.5.5
 
 - Group captured API origins into one saved Env; newly mocked and recorded Flow origins join the selected Env, while named Envs and legacy loads retain their grouping.

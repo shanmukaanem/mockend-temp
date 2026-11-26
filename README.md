@@ -52,13 +52,13 @@ Mockend requests **Ctrl+Shift+M** as its default and provides **Ctrl+Shift+Y** a
 
 Use the **Open Mockend in new tab** icon to open a full browser tab that stays connected to the original app tab. In Chrome 141 and later, opening the tab also closes the sidebar.
 
-## Apps and Env in 1.5.5
+## Apps and Env in 1.5.6
 
 Use **App / profile** at the top left to switch apps. The picker contains only app names and **Manage apps**. The manager provides **New app**, **Rename app**, **Merge app**, **Split Envs into app**, and complete workspace **Export all apps / Import apps**. Each app has its own Envs, Flows, settings, and request history. Switching stops the previous app's mocks and opens its configured launch URL when one is saved.
 
 Rules now store endpoint paths such as `/api/auth/me`. Env supplies the host: the same rule can target `https://local.example/api/auth/me` or `https://dev.example/api/auth/me` by switching Env. Creating a mock from a full URL adds its origin to the selected Env automatically. Existing concrete URL rules upgrade to paths; source origins are retained as Env mappings. Wildcard-host legacy rules retain their explicit matching behavior. A local pre-upgrade backup is retained when storage permits.
 
-The rule editor's **Mapped base URL** selector lists this app's saved URLs. Pick one and enter a path, or paste a full URL to add its origin when saving. Path/query modes, request conditions, responses, and portable exports remain available. New path rules require an Env; clearing an Env cannot make a path match arbitrary hosts.
+The Add/Edit mock editor has one **Env** multi-select: choose **Select all** or specific named Envs. Base URL, Path, and Endpoint are read-only previews on the same line; the separate Base URL selector is removed. Enter an endpoint path or paste a full API URL to register its origin when saving. Path/query matching, request conditions, responses, and exports remain available. New path rules require a configured Env or an app/source URL to create the first Env.
 
 **Merge app** moves all source Envs and Flows into another app and removes the source profile; the destination keeps its settings. **Split Envs into app** moves selected Envs to a new app and copies reusable Flows, keeping selected-Env rule references valid in both apps. At least one Env must remain in the source app. Export all apps before reorganizing if you want an external backup. Flow transfer controls export the current app's configuration; Manage apps exports the complete workspace.
 
@@ -66,26 +66,26 @@ Before any Env exists, the toolbar offers **Save Env** for the current site or *
 
 Settings uses an environment list and a service URL detail pane. Selecting an Env in the list inspects it; **Set active** in its direct action group changes the active mocking target. The Active badge identifies the current target. **New environment** creates an Env; **Add base URL** adds another origin with an optional service name. Edit turns the service and URL cells into independent inline editors without changing their background; the row actions become Save, Enter saves, and Escape cancels only that row. Multiple rows may be edited independently. Row icons edit or delete a URL, while the joined **Set active**, **Rename**, and **Delete** buttons manage the group. At least one origin must remain per Env. Service names are labels, preserved in backups and app merge/split; endpoint rules continue to apply to the selected Env's configured origins. On narrow panels, the Env list scrolls horizontally above the details. Escape cancels inline editors and confirmations.
 
-In the rule editor, **Apply mock to** controls the scope:
+The editor's Env choices determine the target hosts:
 
-| Scope | Target hosts |
+| Choice | Target hosts |
 | --- | --- |
-| Original URL only | Retained for legacy wildcard-host URL rules; concrete URL rules upgrade to Env-based paths |
-| Env selector | Combines the stored endpoint path with the selected Env's origins; a path rule without an Env has no targets |
-| All configured Env | Uses every saved Env regardless of the toolbar selection |
-| Selected Env | Uses only the checked Env regardless of the toolbar selection |
+| Select all | Every configured Env, including Envs added later |
+| Named Envs | The checked Envs, independent of the toolbar selection |
 
-New rules default to Env selector; new API origins join the selected Env when saved. For example, a stored path `/api/v1/orders` targets that path on the configured QA or Staging API hosts. The Path and Endpoint remain exact unless the rule uses wildcards. Method, request type, query, body, response, delay, and CORS conditions still apply. Environments with multiple base URLs apply the same path on each URL. Selecting an Env changes API targets; selecting an app/profile opens its saved launch URL when configured.
+Existing backups with toolbar-following or original-URL scopes remain readable. Editing and saving a rule uses the Env choices shown in the new editor.
+
+New rules start with the active Env selected, or Select all before the first Env exists; saving preserves the shown Env choices. For example, a stored path `/api/v1/orders` targets that path on the configured QA or Staging API hosts. The Path and Endpoint remain exact unless the rule uses wildcards. Method, request type, query, body, response, delay, and CORS conditions still apply. Environments with multiple base URLs apply the same path on each URL. Selecting an Env changes API targets; selecting an app/profile opens its saved launch URL when configured.
 
 The editor previews Base URL, Path, Endpoint, and the complete resolved targets. The Rules table shows effective base URLs and environment names, with an Env filter. If a rule has no configured targets it matches no requests. Edit selected-environment rules before deleting a referenced environment. Environment settings are included in flow backups; old backups still import. Postman mock exports resolve the selected targets into independent portable routes (up to 200) at export time.
 
 Builds keep only stable filenames in `release/`: `chromium/`, `Mockend.vsix`, `Mockend-Chrome.zip`, `Mockend.zip`, and `SHA256SUMS`. Versioned packages are generated only in `dist/`; duplicate versioned archives are removed from `release/` automatically.
 
-## Tables in 1.5.5
+## Tables in 1.5.6
 
 Column dividers transfer width only between their two neighboring columns. Pointer and keyboard resizing preserve the combined width; minimum widths stop the divider before either neighbor becomes unreadable. Env starts at a compact four-character width. Env, Method, Type, and Status keep stable defaults during automatic sizing but remain manually adjustable; unrelated dividers do not change them. Every internal divider stays visible and supports pointer or keyboard resizing. Header labels and cells share the same left inset.
 
-Both tables keep records at a uniform height and clip overflowing text without ellipsis. Tables fit all columns within the viewport before expanding text columns. Method (76px), Base URL (160px), Type (84px), and Status (88px) start at stable default widths. They can be resized manually and do not grow automatically with record contents or the viewport. Text columns shrink to their minimums first; narrower viewports scroll with the final controls pinned. Sort indicators have reserved space and never change a column width. Empty messages appear inside the tables. Only the top table corners are rounded, and headers stay pinned while records scroll. Names and endpoints use flexible widths; full values remain available in tooltips and editors. Drag a column divider or focus it and use Left/Right (Shift for one-pixel steps), Home, or End to resize. Double-click a divider to restore its default width. Requests and Rules remember widths independently. Toolbar controls use icons and content-sized widths below 960px; wider panels show text beside the icons. URL input and the combined view-tab strip stay aligned on one row. Requests keep the always-visible stacked cURL / Mock split button at the row end, without delete buttons or a separate Actions column. Rules expose only a delete icon; click a rule name or row to edit it. Component contents use shared leading padding for consistent alignment. Base URL, Path, and Endpoint selectors live outside Filters. Path and Endpoint start with all values selected and show selected/total counts.
+Both tables keep records at a uniform height and clip overflowing text without ellipsis. Tables fit all columns within the viewport before expanding text columns. Method (76px), Base URL (160px), Type (84px), and Status (88px) start at stable default widths. They can be resized manually and do not grow automatically with record contents or the viewport. Text columns shrink to their minimums first; narrower viewports scroll with the final controls pinned. Sort indicators have reserved space and never change a column width. Empty messages appear inside the tables. Only the top table corners are rounded, and headers stay pinned while records scroll. Names and endpoints use flexible widths; full values remain available in tooltips and editors. Drag a column divider or focus it and use Left/Right (Shift for one-pixel steps), Home, or End to resize. Double-click a divider to restore its default width. Requests and Rules remember widths independently. Toolbar controls use icons and content-sized widths below 960px; wider panels show text beside the icons. URL input and the combined view-tab strip stay aligned on one row. Requests keep the always-visible stacked cURL / Mock split button at the row end, without delete buttons or a separate Actions column. Rules expose only a delete icon; click a rule name or row to edit it. Dropdowns show selected options first. Their controls and pickers share a width based on the longest option, bounded by the available layout; clipped values have tooltips. Filter option trays also place checked choices first. Tabs use the same 24px height as compact buttons. Component contents use shared leading padding for consistent alignment. Base URL, Path, and Endpoint selectors live outside Filters. Path and Endpoint start with all values selected and show selected/total counts.
 
 Rules uses sortable rows with name, method, Base URL / Path, Endpoint, type, status, delay, enabled switch, and a small delete icon. Click a row or its name to edit. Sorting changes the display only; ID shows matching priority. Search rule names, URLs, request conditions, headers, and response contents; use URL to search only the URL or .* for regex. Requests and Rules keep independent search and filters. When search or filters are active, **Invert Filter Result** shows their complement within the selected Base URLs. The split mock control has distinct **filtered** and **all** actions: filtered changes only the currently displayed rows, including inverted filter results; **Enable all mocks / Disable all mocks** changes every rule in the active Flow, including hidden records.
 
@@ -97,7 +97,7 @@ All tabs share the full app viewport and page-header styling. Tab hover feedback
 
 ## Status and flow formats
 
-The HTTP status dropdown offers predefined codes and names. Search for a status or enter a custom value such as `599 Maintenance`, then select **Use 599 Maintenance**. The optional custom reason phrase is replayed in responses and exported mock handlers.
+Dropdowns share the HTTP status picker's compact styling. Selected options appear first; controls and trays fit their longest option within the available space, and clipped values have tooltips. The HTTP status dropdown offers predefined codes and names. Search for a status or enter a custom value such as `599 Maintenance`, then select **Use 599 Maintenance**. The optional custom reason phrase is replayed in responses and exported mock handlers.
 
 The Flow row has three transfer controls: **{}** for copy/paste, **down arrow** for Export, and **up arrow** for Import. Hover to open a tray; click, touch, and keyboard access are also available. Mockend and Postman options are visible together. Leave the tray, click outside, or press Escape to close it. Postman supports Collections with saved examples, executable Mocks, and OpenAPI 3.0 JSON Specs. Specs preserve Mockend matching conditions in a vendor extension. Third-party OpenAPI 3.0/3.1 JSON imports need inline response examples and resolved server URLs; resolve references before import. Collections and Specs require concrete HTTP routes; use Mocks for wildcards and network errors. Postman Flows is explicitly unavailable because independent mock rules do not include a flow graph. Postman can import [OpenAPI specifications](https://learning.postman.com/docs/design-apis/specifications/import-a-specification/).
 
@@ -177,7 +177,7 @@ If you only need the build and unit tests, run `npm run build` and `npm test` wi
 | `test/` | Unit, host, browser, and panel tests |
 | `examples/` | Checkout demo and importable flows |
 | `scripts/` | Build and packaging scripts |
-| `release/` | Prebuilt 1.5.5 installers shipped with the full project ZIP |
+| `release/` | Prebuilt 1.5.6 installers shipped with the full project ZIP |
 
 Edit `src/`, then rebuild and reload the target extension. `build/chromium/` is the unpacked browser extension, `build/vscode/` stages the VS Code extension, and `dist/` contains the new Chrome ZIP, VSIX, and combined ZIP. The build replaces both generated directories. Every build also refreshes the stable directory and package filenames in `release/`.
 

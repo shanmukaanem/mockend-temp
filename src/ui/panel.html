@@ -11,7 +11,7 @@
   <div class="workspace-bar">
     <section class="target" aria-labelledby="target-label">
       <div class="target-info">
-        <label class="application-picker"><span class="sr-only">App / profile</span><select id="application" aria-label="App / profile"><option value="default">My App</option></select></label>
+        <label class="application-picker"><span class="sr-only">App / profile</span><select id="application" aria-label="App / profile"><button type="button"><selectedcontent></selectedcontent></button><option value="default">My App</option></select></label>
         <h2 id="target-label" class="sr-only">Test browser</h2>
         <div id="target-summary">
           <strong id="target-title">Finding your browser tab</strong>
@@ -192,12 +192,14 @@
           <label><span class="sr-only">Request type</span><select name="resource"><button type="button"><selectedcontent></selectedcontent></button><option value="api">Fetch/XHR</option><option value="any">Any HTTP request</option></select></label>
         </div>
         <small id="url-match-help"></small>
-        <div class="rule-url-parts" aria-label="URL parts"><span>Base URL <select id="rule-base-url" name="baseUrl" aria-label="Mapped base URL"></select><strong id="rule-base-preview" class="sr-only"></strong></span><span>Path <strong id="rule-ingress-preview"></strong></span><span>Endpoint <strong id="rule-endpoint-preview"></strong></span></div>
-        <div class="rule-environment-controls">
-          <label>Apply mock to<select name="environmentScope" id="rule-environment-scope"><option value="original">Original URL only</option><option value="active">Env selector</option><option value="all">All configured Env</option><option value="selected">Selected Env</option></select></label>
-          <div id="rule-environment-options" role="group" aria-label="Rule Env" hidden></div>
-          <small id="rule-environment-preview"></small>
+        <div class="rule-url-parts rule-environment-controls" aria-label="Env and URL parts">
+          <div class="rule-env-field"><label id="rule-env-label" for="rule-environment-scope">Env</label><button name="environmentScope" id="rule-environment-scope" type="button" class="secondary value-dropdown" value="all" aria-labelledby="rule-env-label rule-environment-value" aria-controls="rule-environment-options" aria-expanded="false"><span id="rule-environment-value">Select all</span></button></div>
+          <div><span>Base URL</span><strong id="rule-base-preview"></strong></div>
+          <div><span>Path</span><strong id="rule-ingress-preview"></strong></div>
+          <div><span>Endpoint</span><strong id="rule-endpoint-preview"></strong></div>
         </div>
+        <div id="rule-environment-options" class="scope-menu rule-env-menu" role="group" aria-label="Rule Envs" popover></div>
+        <small id="rule-environment-preview" class="sr-only"></small>
       </div>
       <div class="tabs workspace-tabs" id="rule-tabs" role="tablist" aria-label="Mock rule sections">
         <button id="rule-response-tab" type="button" role="tab" aria-selected="true" aria-controls="response-section">Response</button>
@@ -293,13 +295,13 @@
 
   <dialog id="manage-apps-dialog" aria-labelledby="manage-apps-title">
     <div class="dialog-head"><h2 id="manage-apps-title">Manage apps</h2><button class="secondary" type="button" data-application-action="@new">New app</button><button class="secondary icon" type="button" id="close-app-manager" aria-label="Close app manager"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div>
-    <div class="dialog-body"><label for="managed-application">App<select id="managed-application" aria-label="App to manage"></select></label><p id="managed-app-summary"></p><div class="app-management-actions"><button class="secondary" type="button" data-application-action="@rename">Rename app</button><button class="secondary" type="button" data-application-action="@merge">Merge app</button><button class="secondary" type="button" data-application-action="@split">Split Envs into app</button></div></div>
+    <div class="dialog-body"><label for="managed-application">App<select id="managed-application" aria-label="App to manage"><button type="button"><selectedcontent></selectedcontent></button></select></label><p id="managed-app-summary"></p><div class="app-management-actions"><button class="secondary" type="button" data-application-action="@rename">Rename app</button><button class="secondary" type="button" data-application-action="@merge">Merge app</button><button class="secondary" type="button" data-application-action="@split">Split Envs into app</button></div></div>
     <div class="dialog-foot"><button class="secondary" type="button" data-application-action="@export">Export all apps</button><button class="secondary" type="button" data-application-action="@import">Import apps</button><button class="primary" type="button" id="done-app-manager">Done</button></div>
   </dialog>
   <dialog id="application-dialog" aria-labelledby="application-title">
     <form id="application-form" aria-labelledby="application-title">
       <div class="dialog-head"><h2 id="application-title">New app</h2></div>
-      <div class="dialog-body"><label id="application-name-field" for="application-name">App name (required)<input id="application-name" name="applicationName" required maxlength="100" autocomplete="off"></label><label id="application-url-field" for="application-url">Launch URL<input id="application-url" name="applicationUrl" type="url" maxlength="2048" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://example.com" autocomplete="url" aria-describedby="application-help"></label><label id="application-target-field" for="application-target" hidden>Merge into<select id="application-target" name="applicationTarget" aria-label="Merge into app"></select></label><fieldset id="application-envs" hidden><legend>Envs to move</legend></fieldset><small id="application-help">Each app keeps its own Envs and Flows. The URL is optional.</small></div>
+      <div class="dialog-body"><label id="application-name-field" for="application-name">App name (required)<input id="application-name" name="applicationName" required maxlength="100" autocomplete="off"></label><label id="application-url-field" for="application-url">Launch URL<input id="application-url" name="applicationUrl" type="url" maxlength="2048" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://example.com" autocomplete="url" aria-describedby="application-help"></label><label id="application-target-field" for="application-target" hidden>Merge into<select id="application-target" name="applicationTarget" aria-label="Merge into app"><button type="button"><selectedcontent></selectedcontent></button></select></label><fieldset id="application-envs" hidden><legend>Envs to move</legend></fieldset><small id="application-help">Each app keeps its own Envs and Flows. The URL is optional.</small></div>
       <div class="dialog-foot"><button class="secondary" id="cancel-application" type="button">Cancel</button><button class="primary" type="submit">Save app</button></div>
     </form>
   </dialog>

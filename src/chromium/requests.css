@@ -414,8 +414,6 @@ th:has(> [data-rule-sort]) { padding: 0; }
 .rule-url-parts span { min-width: 0; font-size: 10px; color: var(--muted); }
 .rule-url-parts strong { display: block; font-size: 11px; font-weight: 400; color: var(--ink); overflow-wrap: anywhere; }
 .rule-environment-controls { margin-top: 10px; }
-.rule-environment-controls select { margin: 4px 0; }
-#rule-environment-options { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 6px 0; }
 #rule-environment-preview { display: block; overflow-wrap: anywhere; max-height: 70px; overflow: auto; }
 .environment-cell { font-size: 11px; overflow: hidden; text-overflow: clip; }
 .rules-table th:nth-child(9) { width: 140px; }

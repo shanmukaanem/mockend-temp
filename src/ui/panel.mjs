@@ -1,3 +1,4 @@
+import { selectedFirst, fitSelect, prepareSelect, replaceSelectOptions, longestOptionWidth, clippedSelectValue, clippedControlValue, mountSelectLayouts } from './dropdowns.mjs';
 import { urlParts } from '../core/url-parts.mjs';
 import { measureTrayWidth } from './tray-size.mjs';
 import { mountTableColumns } from './table-columns.mjs';
@@ -5,7 +6,7 @@ import { mountCompactControls, setControlLabel } from './compact-controls.mjs';
 import { HTTP_STATUSES } from '../core/http-statuses.mjs';
 import { mountTransferMenus } from './transfer-menu.mjs';
 import { mountOverlayScrollbars } from './overlay-scrollbars.mjs';
-import { mountHoverTray } from './hover-tray.mjs';
+import { mountDropdown } from './dropdown.mjs';
 import { toast } from './toasts.mjs';
 import { mountRowHover } from './row-hover.mjs';
 import { mountHttpStatusPicker } from './http-status-picker.mjs';
@@ -21,6 +22,7 @@ const { request, openFile, saveFile, connectRecording, copyToClipboard } = await
 
 const $ = id => document.getElementById(id);
 mountCompactControls();
+mountSelectLayouts();
 mountOverlayScrollbars();
 mountTabSliders();
 document.addEventListener('invalid', event => {
@@ -110,9 +112,9 @@ function renderConnection() {
 function renderConfig() {
   const config = state.config;
   const apps = state.applications ?? [{ id: 'default', name: 'My App' }];
-  $('application').replaceChildren(...apps.map(app => new Option(app.name, app.id)), new Option('Manage apps…', '@manage'));
+  replaceSelectOptions($('application'), ...apps.map(app => new Option(app.name, app.id)), new Option('Manage apps…', '@manage'));
   $('application').value = state.applicationId ?? 'default';
-  $('managed-application').replaceChildren(...apps.map(app => new Option(app.name, app.id)));
+  replaceSelectOptions($('managed-application'), ...apps.map(app => new Option(app.name, app.id)));
   $('managed-application').value = state.applicationId ?? 'default';
   $('managed-app-summary').textContent = `${config.environments?.length ?? 0} Envs · ${config.scenarios.length} Flows · ${config.scenarios.reduce((count, flow) => count + flow.rules.length, 0)} rules`;
   document.querySelector('[data-application-action="@merge"]').disabled = apps.length < 2;
@@ -123,7 +125,7 @@ function renderConfig() {
     const row = element('div', 'scenario-option');
     const option = button('scenario-choice', item.name, () => selectScenario(item.id));
     option.removeAttribute('title');
-    option.dataset.noTooltip = '';
+    option.dataset.clipTooltip = '';
     option.setAttribute('aria-pressed', String(item.id === config.activeScenarioId));
     row.append(option);
     for (const [path, action, callback] of [
@@ -146,6 +148,8 @@ function renderConfig() {
     }
     return row;
   }));
+  selectedFirst($('scenario-options'), '.scenario-option', row => row.querySelector('.scenario-choice').getAttribute('aria-pressed') === 'true');
+  measureFlowControls();
   $('bypass').checked = config.settings.bypassServiceWorker;
   for (const id of ['scenario', 'new-scenario', 'add-rule', 'bypass', 'import', 'paste-rules', 'export', 'copy-scenarios']) $(id).disabled = false;
   renderEnvironments();
@@ -168,7 +172,7 @@ function editApplication(mode) {
   $('application-url-field').hidden = mode !== 'new';
   field(form, 'applicationUrl').value = '';
   $('application-target-field').hidden = mode !== 'merge';
-  field(form, 'applicationTarget').replaceChildren(...(state.applications ?? []).filter(item => item.id !== state.applicationId).map(item => new Option(item.name, item.id)));
+  replaceSelectOptions(field(form, 'applicationTarget'), ...(state.applications ?? []).filter(item => item.id !== state.applicationId).map(item => new Option(item.name, item.id)));
   $('application-envs').hidden = mode !== 'split';
   $('application-envs').replaceChildren(element('legend', '', 'Envs to move'), ...(state.config.environments ?? []).map(env => {
     const label = element('label', 'check'); const input = element('input'); input.type = 'checkbox'; input.name = 'environmentIds'; input.value = env.id;
@@ -252,7 +256,7 @@ function renderEnvironments() {
   try { site = new URL((state.connection?.available ?? state.connection?.active)?.url); } catch { /* No current HTTP site. */ }
   const current = site && /^https?:$/.test(site.protocol) ? site : undefined;
   const saved = current && environments.some(env => env.baseUrls.some(base => new URL(base).origin === current.origin));
-  picker.replaceChildren(...(!environments.length ? [new Option(current && !saved ? 'Save Env' : 'No Env', '')] : []), ...environments.map(env => new Option(env.name, env.id)));
+  replaceSelectOptions(picker, ...(!environments.length ? [new Option(current && !saved ? 'Save Env' : 'No Env', '')] : []), ...environments.map(env => new Option(env.name, env.id)));
   if (current && !saved) picker.append(new Option('Save current site…', '@save'));
   // Retain existing all-environment configurations without offering new ones here.
   if (state.config.settings.environmentId === '*') picker.append(new Option('All Env', '*'));
@@ -544,21 +548,59 @@ $('environment-form').addEventListener('submit', async event => {
     $('add-environment-url').focus(); message('environment-feedback', 'Env saved. Active mocks use the updated base URLs.');
   }
 });
+function ruleEnvironmentIds() {
+  return [...$('rule-environment-options').querySelectorAll('input[data-env-id]:checked')].map(input => input.value);
+}
 function syncRuleEnvironment(form) {
   const url = field(form, 'url').value.trim();
   const parts = urlParts(url);
-  $('rule-base-preview').textContent = parts.baseUrl || field(form, 'baseUrl').value || '';
+  const scope = field(form, 'environmentScope').value;
+  const ids = ruleEnvironmentIds();
+  const targets = ruleUrls({ url, environmentScope: scope, environmentIds: ids }, state.config);
+  const bases = [...new Set(targets.map(target => urlParts(target).baseUrl).filter(Boolean))];
+  if (!bases.length && !state.config.environments?.length && ruleDraft?.baseUrl) bases.push(ruleDraft.baseUrl);
+  $('rule-base-preview').textContent = bases.join(', ');
+  $('rule-base-preview').dataset.tooltip = bases.join(', ');
   $('rule-ingress-preview').textContent = parts.ingress === '/' ? '' : parts.ingress;
   $('rule-endpoint-preview').textContent = parts.endpoint === '/' ? '' : parts.endpoint;
-  const scope = field(form, 'environmentScope').value;
-  $('rule-environment-options').hidden = scope !== 'selected';
-  const environmentIds = [...$('rule-environment-options').querySelectorAll('input:checked')].map(input => input.value);
-  const base = field(form, 'baseUrl').value;
-  const environment = state?.config.environments?.find(env => env.baseUrls.includes(base));
-  const config = environment && scope === 'active' ? { ...state.config, settings: { ...state.config.settings, environmentId: environment.id } } : state?.config ?? {};
-  const targets = url.startsWith('/') && scope === 'active' && base && !environment ? [base + url] : ruleUrls({ url, environmentScope: scope, environmentIds }, config);
-  $('rule-environment-preview').textContent = scope === 'original' ? 'Uses the base URL in the source URL.'
-    : targets.length ? `Targets: ${targets.join(' · ')}. Query and body conditions still apply.` : 'No targets. Add an Env in Settings or select one.';
+  for (const id of ['rule-base-preview', 'rule-ingress-preview', 'rule-endpoint-preview']) { $(id).dataset.clipTooltip = ''; $(id).dataset.tooltip = $(id).textContent; }
+  const names = (state.config.environments ?? []).filter(env => ids.includes(env.id)).map(env => env.name);
+  $('rule-environment-value').textContent = scope === 'all' ? 'Select all' : names.join(', ') || 'Select Envs';
+  $('rule-environment-preview').textContent = targets.length ? `Targets: ${targets.join(' | ')}. Query and body conditions still apply.` : 'No targets. Add an Env in Settings or paste a full API URL.';
+}
+const ruleEnvMenu = $('rule-environment-options');
+const ruleEnvControl = $('rule-environment-scope');
+mountDropdown(ruleEnvControl, ruleEnvMenu, { width: () => ruleEnvControl.getBoundingClientRect().width / (Number(getComputedStyle(document.body).zoom) || 1) });
+ruleEnvMenu.addEventListener('change', event => {
+  const all = ruleEnvMenu.querySelector('[data-select-all]');
+  const inputs = [...ruleEnvMenu.querySelectorAll('[data-env-id]')];
+  if (event.target === all) for (const input of inputs) input.checked = all.checked;
+  else all.checked = inputs.length > 0 && inputs.every(input => input.checked);
+  all.indeterminate = !all.checked && inputs.some(input => input.checked);
+  ruleEnvControl.value = all.checked ? 'all' : 'selected';
+  selectedFirst(ruleEnvMenu.querySelector('.rule-env-choices'), 'label', label => label.querySelector('input').checked);
+  syncRuleEnvironment($('rule-form')); validateRuleFields($('rule-form'));
+});
+function fillRuleEnvs(rule) {
+  const environments = state.config.environments ?? [];
+  const allSelected = rule?.environmentScope === 'all' || ((!rule?.environmentScope || rule.environmentScope === 'active') && state.config.settings.environmentId === '*') || !environments.length;
+  const ids = rule?.environmentScope === 'selected' ? rule.environmentIds ?? []
+    : [state.config.settings.environmentId ?? environments[0]?.id];
+  ruleEnvControl.value = allSelected ? 'all' : 'selected';
+  const make = (name, value, checked, selectAll = false) => {
+    const label = element('label', 'check'); const input = element('input');
+    input.type = 'checkbox'; input.value = value; input.checked = checked;
+    if (selectAll) input.dataset.selectAll = ''; else input.dataset.envId = value;
+    const caption = element('span', '', name); caption.dataset.clipTooltip = ''; caption.dataset.tooltip = name;
+    label.append(caption, input); return label;
+  };
+  const choices = element('div', 'rule-env-choices');
+  choices.append(...environments.map(env => make(env.name, env.id, allSelected || ids.includes(env.id))));
+  selectedFirst(choices, 'label', label => label.querySelector('input').checked);
+  ruleEnvMenu.replaceChildren(make('Select all', '*', allSelected, true), choices);
+  $('rule-form').style.setProperty('--rule-env-width', `${longestOptionWidth(ruleEnvControl, ['Select all', ...environments.map(env => env.name)])}px`);
+  const all = ruleEnvMenu.querySelector('[data-select-all]');
+  all.indeterminate = !allSelected && ids.some(id => environments.some(env => env.id === id));
 }
 
 function currentSite(connection = state?.connection) {
@@ -885,11 +927,7 @@ function editRule(rule, captured, tab, scenarioId = state?.config.activeScenario
   }
   ruleDraft.site = rule?.site ?? (tab ? new URL(tab.url).hostname : captured || !rule ? currentSite() : '');
   field(form, 'urlMode').value = rule?.endpointOnly ? 'endpoint' : rule?.exactUrl ? 'exact' : 'pattern';
-  field(form, 'environmentScope').value = rule?.environmentScope ?? (rule?.url?.includes('://') && rule.url.split('://')[1].split('/')[0].includes('*') ? 'original' : 'active');
-  $('rule-environment-options').replaceChildren(...(state.config.environments ?? []).map(env => {
-    const label = element('label', 'check'); const input = element('input'); input.type = 'checkbox'; input.value = env.id;
-    input.checked = Boolean(rule?.environmentIds?.includes(env.id)); label.append(input, element('span', '', env.name)); return label;
-  }));
+  fillRuleEnvs(rule);
   const legacyBody = Object.hasOwn(rule ?? {}, 'requestBody') && rule.requestBodyMode !== 'exact';
   $('legacy-body-mode').hidden = !legacyBody;
   field(form, 'requestBodyMode').value = rule?.parameters?.length ? 'parameters'
@@ -913,17 +951,8 @@ function editRule(rule, captured, tab, scenarioId = state?.config.activeScenario
   catch { /* Leave the new rule URL empty until the app URL is valid. */ }
   ruleDraft.sourceUrl = rule?.url;
   const source = rule?.url && /^https?:\/\//.test(rule.url) && !rule.url.split('://')[1].split('/')[0].includes('*') ? new URL(rule.url) : undefined;
-  const mapped = (state.config.environments ?? []).flatMap(env => env.baseUrls.map(origin => ({ origin, name: env.name, id: env.id })));
-  const selected = mapped.find(item => item.id === state.config.settings.environmentId)?.origin;
-  const origin = selected ?? source?.origin ?? (baseUrl ? new URL(baseUrl).origin : mapped[0]?.origin);
-  const origins = new Map(mapped.map(item => [item.origin, `${item.name} · ${item.origin}`]));
-  if (origin && !origins.has(origin)) origins.set(origin, `${new URL(origin).host} · new Env`);
-  field(form, 'baseUrl').replaceChildren(...[...origins].map(([value, name]) => new Option(name, value)));
-  field(form, 'baseUrl').value = origin ?? '';
+  ruleDraft.baseUrl = source?.origin ?? (baseUrl ? new URL(baseUrl).origin : '');
   field(form, 'url').value = source ? source.pathname + source.search : rule?.url ?? '/';
-  const originalOption = field(form, 'environmentScope').querySelector('[value="original"]');
-  originalOption.hidden = originalOption.disabled = !rule?.url || Boolean(source) || rule.url.startsWith('/');
-  if (originalOption.disabled && field(form, 'environmentScope').value === 'original') field(form, 'environmentScope').value = 'active';
   field(form, 'resource').value = ['XHR', 'Fetch'].includes(rule?.resource) ? 'api' : rule?.resource ?? 'api';
   field(form, 'requestBody').value = Object.hasOwn(rule ?? {}, 'requestBody') ? pretty(rule.requestBody) : '';
   field(form, 'parameterExample').value = field(form, 'requestBody').value;
@@ -948,6 +977,7 @@ function editRule(rule, captured, tab, scenarioId = state?.config.activeScenario
   message('rule-error');
   validateRuleFields(form);
   $('rule-dialog').showModal();
+  form.querySelectorAll('select').forEach(fitSelect);
   refreshJsonEditors(true);
   if (captured && !$('body-field').hidden && !field(form, 'body').hidden) {
     field(form, 'body').focus();
@@ -1026,7 +1056,8 @@ function mountParameterPicker(key, getChoices, onPick) {
   }
   function open(search = '') {
     const terms = search.trim().toLowerCase().split(/\s+/);
-    const matching = getChoices().filter(([name]) => terms.every(term => name.toLowerCase().includes(term)));
+    const matching = getChoices().filter(([name]) => terms.every(term => name.toLowerCase().includes(term)))
+      .sort((a, b) => Number(b[0] === key.value) - Number(a[0] === key.value));
     options = matching.slice(0, 80);
     current = -1;
     key.removeAttribute('aria-activedescendant');
@@ -1035,7 +1066,8 @@ function mountParameterPicker(key, getChoices, onPick) {
       option.id = `${list.id}-${index}`;
       option.tabIndex = -1;
       option.setAttribute('role', 'option');
-      option.setAttribute('aria-selected', 'false');
+      option.setAttribute('aria-selected', String(name === key.value));
+      option.dataset.clipTooltip = '';
       return option;
     }));
     list.hidden = !options.length;
@@ -1047,7 +1079,7 @@ function mountParameterPicker(key, getChoices, onPick) {
     const above = innerHeight - bottom < 175 && top > 175;
     picker.style.top = above ? 'auto' : `${(bottom + 3) / zoom}px`;
     picker.style.bottom = above ? `${(innerHeight - top + 3) / zoom}px` : 'auto';
-    picker.style.width = `${Math.min(Math.max(170, key.offsetWidth), (innerWidth - left - 7) / zoom)}px`;
+    picker.style.width = `${Math.min(key.offsetWidth, (innerWidth - left - 7) / zoom)}px`;
     picker.showPopover();
     key.setAttribute('aria-expanded', 'true');
   }
@@ -1085,10 +1117,12 @@ function mountParameterPicker(key, getChoices, onPick) {
 function addParameter(form, parameter = { source: parameterChoices(form, 'body').length ? 'body' : 'query', key: '', value: '' }) {
   const row = element('div', 'parameter-row');
   const join = element('select', 'parameter-join');
+  prepareSelect(join);
   join.setAttribute('aria-label', 'Condition operator');
   join.append(new Option('AND', 'and'), new Option('OR', 'or'));
   join.value = parameter.join ?? 'and';
   const source = element('select');
+  prepareSelect(source);
   source.setAttribute('aria-label', 'Parameter source');
   source.append(new Option('Query string', 'query'), new Option('JSON body', 'body'));
   source.value = parameter.source;
@@ -1225,7 +1259,7 @@ function validateRuleFields(form) {
   if (urlMode === 'endpoint') rule.endpointOnly = true;
   const scope = value('environmentScope');
   if (scope !== 'original') rule.environmentScope = scope;
-  if (scope === 'selected') rule.environmentIds = [...$('rule-environment-options').querySelectorAll('input:checked')].map(input => input.value);
+  if (scope === 'selected') rule.environmentIds = ruleEnvironmentIds();
   let valid = true;
   const report = (name, error) => {
     const input = field(form, name);
@@ -1253,7 +1287,7 @@ function validateRuleFields(form) {
       report(name, error.message);
     }
   };
-  report('environmentScope', scope === 'selected' && !rule.environmentIds.length ? 'Select at least one Env.' : scope !== 'original' && !state.config.environments?.length && !value('baseUrl') && !/^https?:\/\//.test(value('url')) ? 'Paste a full API URL or open your app to create its first Env.' : '');
+  report('environmentScope', scope === 'selected' && !rule.environmentIds.length ? 'Select at least one Env.' : scope !== 'original' && !state.config.environments?.length && !draft.baseUrl && !/^https?:\/\//.test(value('url')) ? 'Paste a full API URL or open your app to create its first Env.' : '');
   report('name', rule.name ? '' : 'Enter a request name.');
   report('method', /^[!#$%&'*+.^_`|~0-9A-Z-]+$/.test(method) ? '' : 'Enter a valid HTTP method.');
   rule.url = check('url', () => {
@@ -1331,17 +1365,12 @@ async function submitRule(event) {
   $('save-rule').disabled = true;
   try {
     const saved = await save(config => {
-      if (draft.sourceUrl && /^https?:\/\//.test(draft.sourceUrl)) mapRuleEnvironment(config, { url: draft.sourceUrl });
+      const targetId = rule.environmentScope === 'selected' ? rule.environmentIds[0] : config.settings.environmentId;
+      const target = targetId ? { ...config, settings: { ...config.settings, environmentId: targetId } } : config;
+      if (draft.sourceUrl && /^https?:\/\//.test(draft.sourceUrl)) mapRuleEnvironment(target, { url: draft.sourceUrl });
       if (rule.url.startsWith('/')) {
-        const base = field(form, 'baseUrl').value;
-        if (base) {
-          const mapped = mapRuleEnvironment(config, { url: base + rule.url });
-          const env = config.environments.find(item => item.id === config.settings.environmentId && item.baseUrls.includes(base))
-            ?? config.environments.find(item => item.baseUrls.includes(base));
-          if (env && rule.environmentScope === 'active') config.settings.environmentId = env.id;
-          rule.url = mapped.url;
-        }
-      } else mapRuleEnvironment(config, rule);
+        if (!config.environments?.length && draft.baseUrl) mapRuleEnvironment(config, { url: draft.baseUrl + rule.url });
+      } else mapRuleEnvironment(target, rule);
       const rules = config.scenarios.find(item => item.id === draft.scenarioId).rules;
       const index = rules.findIndex(item => item.id === rule.id);
       if (index < 0 && draft.captured) rules.unshift(rule);
@@ -1508,7 +1537,10 @@ const ruleDialog = $('rule-dialog');
 ruleDialog.addEventListener('focusin', updateFieldError);
 ruleDialog.addEventListener('focusout', () => queueMicrotask(updateFieldError));
 ruleDialog.addEventListener('scroll', updateFieldError, true);
-ruleDialog.addEventListener('close', updateFieldError);
+ruleDialog.addEventListener('close', () => {
+  if (ruleEnvMenu.matches(':popover-open')) ruleEnvMenu.hidePopover();
+  updateFieldError();
+});
 window.addEventListener('resize', updateFieldError);
 
 const ruleForm = $('rule-form');
@@ -1569,29 +1601,16 @@ $('add-rule').addEventListener('click', () => editRule());
 const scenarioMenu = $('scenario-menu');
 const scenarioPicker = $('scenario');
 function measureFlowControls() {
-  const controls = ['scenario', 'new-scenario', 'transfer-clipboard', 'transfer-download'];
-  const scale = Number(getComputedStyle(document.body).zoom) || 1;
-  const widths = controls.map((id, index) => index ? 24 : $(id).getBoundingClientRect().width / scale);
-  if (!widths[0]) return widths;
   const tools = document.querySelector('.scenario-tools');
-  tools.style.setProperty('--flow-picker-width', `${widths[0]}px`);
-  return widths;
-}
-mountHoverTray(scenarioPicker, scenarioMenu);
-scenarioMenu.addEventListener('beforetoggle', event => {
-  if (event.newState !== 'open') return;
-  const bounds = scenarioPicker.getBoundingClientRect();
   const scale = Number(getComputedStyle(document.body).zoom) || 1;
-  measureFlowControls();
-  const width = measureTrayWidth(scenarioMenu, (innerWidth - 12) / scale) * scale;
-  const below = innerHeight - bounds.bottom;
-  const above = below < 160 && bounds.top > below;
-  scenarioMenu.style.width = `${width / scale}px`;
-  scenarioMenu.style.left = `${Math.max(0, Math.min(bounds.left - 6 * scale, innerWidth - width - 6)) / scale}px`;
-  scenarioMenu.style.top = above ? 'auto' : `${(bounds.bottom + 5) / scale}px`;
-  scenarioMenu.style.bottom = above ? `${(innerHeight - bounds.top + 5) / scale}px` : 'auto';
-  scenarioMenu.style.maxHeight = `${Math.max(48, (above ? bounds.top : below) - 12) / scale}px`;
-});
+  const maximum = Math.max(80, Math.min((innerWidth - 16) / scale, tools.clientWidth - $('new-scenario').offsetWidth - document.querySelector('.transfer-controls').offsetWidth - 12));
+  const width = measureTrayWidth(scenarioMenu, maximum);
+  scenarioPicker.style.width = `${width}px`;
+  scenarioMenu.style.width = `${width}px`;
+  tools.style.setProperty('--flow-picker-width', `${width}px`);
+  return width;
+}
+mountDropdown(scenarioPicker, scenarioMenu, { width: measureFlowControls });
 scenarioMenu.addEventListener('toggle', event => {
   const open = event.newState === 'open';
   scenarioPicker.setAttribute('aria-expanded', String(open));
@@ -1600,8 +1619,9 @@ scenarioMenu.addEventListener('toggle', event => {
 $('cancel-scenario').addEventListener('click', closeScenarioEditor);
 $('new-scenario').addEventListener('click', () => editScenario('new'));
 document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || event.defaultPrevented) return;
+  if (event.key !== 'Escape') return;
   closeTooltip();
+  if (event.defaultPrevented) return;
   // Native dialogs and popovers dismiss their topmost surface with Escape.
   if (document.querySelector('dialog[open], [popover]:popover-open:not(.toast-stack)')) return;
   if (!$('scenario-form').hidden) { event.preventDefault(); closeScenarioEditor(); return; }
@@ -1732,6 +1752,8 @@ function setZoom(percent) {
 }
 try { setZoom(Number(localStorage.getItem('mockroute.zoom')) || 100); } catch { setZoom(100); }
 
+new ResizeObserver(() => { if (scenarioPicker.getClientRects().length) measureFlowControls(); }).observe(document.querySelector('.scenario-tools'));
+
 const tooltip = element('div', 'styled-tooltip');
 tooltip.setAttribute('popover', 'manual');
 tooltip.setAttribute('role', 'tooltip');
@@ -1744,16 +1766,22 @@ function closeTooltip() {
   tooltip.hidePopover();
 }
 function queueTooltip(target) {
-  if (target.closest('[data-no-tooltip], .scenario-toolbar #scenario')) { closeTooltip(); return; }
-  const anchor = target.closest('[data-tooltip], [title], button[aria-label]');
+  const valueTarget = target.closest('select, input[role=combobox], .value-dropdown, #scenario, .scenario-choice, [data-clip-tooltip]');
+  if (!valueTarget && target.closest('[data-no-tooltip]')) { closeTooltip(); return; }
+  const anchor = valueTarget ?? target.closest('[data-tooltip], [title], button[aria-label]');
   if (anchor === tooltipAnchor) return;
   closeTooltip();
   if (!anchor) return;
-  const text = anchor.dataset.tooltip || anchor.title || anchor.getAttribute('aria-label');
-  if (!text) return;
-  if (anchor.title) {
-    anchor.dataset.tooltip ??= anchor.title;
+  let text;
+  if (valueTarget) {
+    const content = anchor.matches('select') ? undefined : anchor.querySelector('#rule-environment-value, span') ?? anchor;
+    text = anchor.matches('select') ? clippedSelectValue(anchor) : anchor.matches('input') ? clippedControlValue(anchor, anchor.value) : content.scrollWidth > content.clientWidth + 1 ? anchor.dataset.tooltip || content.textContent : '';
     anchor.removeAttribute('title');
+    if (!text) return;
+  } else {
+    text = anchor.dataset.tooltip || anchor.title || anchor.getAttribute('aria-label');
+    if (!text) return;
+    if (anchor.title) { anchor.dataset.tooltip ??= anchor.title; anchor.removeAttribute('title'); }
   }
   tooltipAnchor = anchor;
   tooltipTimer = setTimeout(() => {
@@ -1772,6 +1800,7 @@ document.addEventListener('pointerout', event => {
 });
 document.addEventListener('focusin', event => { if (event.target.matches(':focus-visible')) queueTooltip(event.target); });
 document.addEventListener('focusout', event => { if (tooltipAnchor === event.target) closeTooltip(); });
+document.addEventListener('beforetoggle', event => { if (event.newState === 'open' && event.target !== tooltip) closeTooltip(); }, true);
 document.addEventListener('pointerdown', closeTooltip);
 document.addEventListener('scroll', closeTooltip, true);
 document.addEventListener('keydown', event => {

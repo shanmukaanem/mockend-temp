@@ -426,3 +426,67 @@ button:is(#filter-toggle, #rules-filter-toggle):is(:hover, :focus-visible, [aria
 .environment-url-table tr[data-editing] td { background: transparent; }
 
 .environment-url-table td { padding-block: 5px; }
+
+/* All value controls keep their text and picker within the same available width. */
+select { inline-size: min(100%, var(--select-option-width, 100%)); max-inline-size: 100%; min-inline-size: 0; }
+@supports (appearance: base-select) {
+  select > button { display: flex; flex: 1 1 0; min-inline-size: 0; max-inline-size: 100%; height: 100%; padding: 0; background: transparent !important; color: inherit !important; text-align: start; overflow: hidden; }
+  select selectedcontent { display: block; flex: 1 1 0; min-inline-size: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  select::picker(select), #rule-form select::picker(select) { inline-size: anchor-size(width); min-inline-size: anchor-size(width); max-inline-size: calc(100vw / var(--panel-zoom) - 16px); }
+}
+.environment-picker { max-width: clamp(72px, calc(100vw / var(--panel-zoom) - 240px), 180px); }
+.environment-picker select, .application-picker select { width: var(--select-option-width); min-width: 0; max-width: 100%; }
+#rule-form .rule-url-parts { display: grid; grid-template-columns: minmax(0, min(var(--rule-env-width, 120px), 40%)) minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: start; }
+#rule-form .rule-url-parts > div { min-width: 0; }
+#rule-form .rule-url-parts :is(label, div > span) { display: block; margin: 0 0 4px; color: var(--muted); font-size: 10px; }
+#rule-form .rule-url-parts strong { display: block; min-width: 0; font-size: 11px; font-weight: 400; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+#rule-environment-scope { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 24px; padding: 3px 8px; text-align: start; }
+#rule-environment-value { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+#rule-environment-scope::after { content: ''; flex: none; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-1px) rotate(45deg); }
+#rule-environment-scope[aria-expanded="true"] { color: var(--on-accent); background: var(--accent); }
+.rule-env-menu { max-height: min(260px, 60vh); padding: 4px; }
+.rule-env-menu label { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 26px; padding: 6px; border-radius: 4px; }
+.rule-env-menu label > span { min-width: 0; overflow-wrap: anywhere; font-size: 11px; }
+.rule-env-menu label:has(:checked) { background: var(--tint); }
+.rule-env-menu input[type="checkbox"] { flex: none; }
+
+.rule-env-menu label > span { white-space: nowrap; overflow: hidden; text-overflow: clip; }
+
+/* Tabs share the compact 24px button rhythm, without a padded outer shell. */
+.workspace-tabs, html:not(.standalone) .workspace-tabs { --tab-gap: 0px; gap: 0; padding: 0; height: var(--control-size); min-height: var(--control-size); border-radius: 5px; }
+.workspace-tabs > button, html:not(.standalone) .workspace-tabs > button { box-sizing: border-box; height: var(--control-size); min-height: var(--control-size); padding: 3px 7px; font-size: 11px; line-height: 18px; border-radius: 5px; }
+#rule-tabs { display: flex; width: max-content; max-width: calc(100% - 24px); }
+#rule-tabs > button { flex: 0 1 auto; min-width: 0; }
+#rule-form .choice-group { padding: 0; gap: 0; }
+#rule-form .choice-group label { height: var(--control-size); min-height: var(--control-size); padding: 3px 7px; font-size: 11px; }
+@supports not (position-anchor: --tab) {
+  .workspace-tabs::before { display: none; }
+  .workspace-tabs > button:is([aria-current], [aria-selected="true"]) { background: var(--accent); color: var(--on-accent); }
+}
+
+/* Shared dropdown component: the HTTP status picker is the visual reference. */
+:is(.dropdown-menu, .scope-menu, .base-url-menu, .transfer-menu, .request-filter-tree, #scenario-menu) {
+  box-sizing: border-box; padding: 8px; border: 0; border-radius: 10px;
+  background: var(--surface); color: var(--ink); box-shadow: 0 5px 18px #33281b30;
+}
+.dropdown-menu { position: fixed; inset: auto; margin: 0; overflow: auto; }
+.dropdown-control { border-radius: 9px; }
+.dropdown-control[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); }
+:is(.dropdown-menu, .scope-menu, .base-url-menu) :is(.status-option, .parameter-option, .rule-env-choices label),
+.rule-env-menu > label { box-sizing: border-box; min-height: 26px; padding: 4px 8px; border-radius: 5px; font-size: 11px; }
+.rule-env-menu label:is(:hover, :has(:checked)) { background: var(--accent); color: var(--on-accent); }
+.rule-env-menu label:is(:hover, :has(:checked)) input:checked { background: var(--on-accent); color: var(--accent); }
+@supports (appearance: base-select) {
+  select { border-radius: 9px; }
+  select::picker(select), #rule-form select::picker(select) {
+    box-sizing: border-box; padding: 8px; border: 0; border-radius: 10px;
+    background: var(--surface); color: var(--ink); box-shadow: 0 5px 18px #33281b30;
+  }
+  select option, #rule-form select option { min-height: 26px; padding: 4px 8px; border-radius: 5px; font-size: 11px; }
+  select option + option, #rule-form select option + option { margin-top: 2px; }
+  select option:is(:checked, :hover, :focus-visible) { background: var(--accent); color: var(--on-accent); }
+}
+
+:is(.scope-menu .facet-options label, .base-url-menu label) { border-radius: 5px; }
+:is(.scope-menu .facet-options label, .base-url-menu label):is(:hover, :has(:checked)) { background: var(--accent); color: var(--on-accent); }
+:is(.scope-menu .facet-options label, .base-url-menu label):is(:hover, :has(:checked)) input:checked { background: var(--on-accent); color: var(--accent); }

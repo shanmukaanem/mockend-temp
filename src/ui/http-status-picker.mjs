@@ -1,5 +1,6 @@
+import { selectedFirst } from './dropdowns.mjs'
+import { mountDropdown } from './dropdown.mjs'
 import { HTTP_STATUSES } from '../core/http-statuses.mjs'
-import { mountHoverTray } from './hover-tray.mjs'
 import { toast } from './toasts.mjs'
 
 /**
@@ -12,6 +13,7 @@ import { toast } from './toasts.mjs'
  * @returns {(code: number, name?: string) => void} Set an existing rule's status.
  */
 export function mountHttpStatusPicker(control, tray, codeInput, nameInput, changed) {
+  control.dataset.clipTooltip = ''
   const search = tray.querySelector('input')
   const list = tray.querySelector('[role="listbox"]')
   const custom = tray.querySelector('[data-custom-status]')
@@ -40,6 +42,7 @@ export function mountHttpStatusPicker(control, tray, codeInput, nameInput, chang
     control.querySelector('span').textContent = caption(code, name)
     control.title = caption(code, name)
     choices.forEach((option, id) => option.setAttribute('aria-selected', String(id === key(code, name))))
+    selectedFirst(list, 'button', option => option.getAttribute('aria-selected') === 'true')
   }
   function choose(code, name) {
     set(code, name)
@@ -77,24 +80,7 @@ export function mountHttpStatusPicker(control, tray, codeInput, nameInput, chang
     const next = Math.max(0, Math.min(options.length - 1, index + direction))
     options[next]?.focus()
   })
-  tray.addEventListener('beforetoggle', event => {
-    if (event.newState !== 'open') return
-    search.value = ''
-    filter()
-    const bounds = control.getBoundingClientRect()
-    const zoom = Number(getComputedStyle(document.body).zoom) || 1
-    const width = Math.min(290 * zoom, innerWidth - 16)
-    const below = innerHeight - bounds.bottom
-    const above = bounds.top
-    const opensBelow = below >= Math.min(200, above)
-    tray.style.width = `${width / zoom}px`
-    tray.style.left = `${Math.max(8, Math.min(bounds.left, innerWidth - width - 8)) / zoom}px`
-    tray.style.top = opensBelow ? `${(bounds.bottom + 5) / zoom}px` : 'auto'
-    tray.style.bottom = opensBelow ? 'auto' : `${(innerHeight - bounds.top + 5) / zoom}px`
-    tray.style.maxHeight = `${Math.max(80, (opensBelow ? below : above) - 13) / zoom}px`
-  })
-  tray.addEventListener('toggle', () => control.setAttribute('aria-expanded', String(tray.matches(':popover-open'))))
-  mountHoverTray(control, tray)
+  mountDropdown(control, tray, { prepare: () => { search.value = ''; filter() } })
   control.addEventListener('click', () => search.focus())
   set(200)
   return set

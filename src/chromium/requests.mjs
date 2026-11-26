@@ -1,4 +1,5 @@
 import { measureTrayWidth } from '../ui/tray-size.mjs';
+import { selectedFirst } from '../ui/dropdowns.mjs';
 import { urlParts } from '../core/url-parts.mjs';
 import { mountTableColumns } from '../ui/table-columns.mjs';
 import { mountHoverTray } from '../ui/hover-tray.mjs';
@@ -436,6 +437,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
       option.querySelector('input').checked = baseUrls.has('*') || baseUrls.has(url);
       option.querySelector('small').textContent = subtitle ?? '';
     }
+    selectedFirst(baseOptions, 'label', label => label.querySelector('input').checked);
   }
 
   baseMenu.addEventListener('change', event => {

@@ -364,13 +364,18 @@ test('the side panel starts recording, filters requests and opens a selected res
   await page.getByRole('option', { name: 'PATCH', exact: true }).click();
   assert.equal(await methodPicker.inputValue(), 'PATCH');
   assert.deepEqual(await methodPicker.locator('option').allTextContents(),
-    ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+    ['PATCH', 'GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS']);
   await methodPicker.selectOption('OPTIONS');
   assert.equal(await methodPicker.evaluate(node => node.title || node.dataset.tooltip), 'OPTIONS');
-  assert.equal(await methodPicker.evaluate(select => {
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.screenshot({ path: resolve(import.meta.dirname, '../test-results/select-options-containment.png'), animations: 'disabled' });
+  const methodValue = await methodPicker.evaluate(select => {
     const content = select.querySelector('selectedcontent');
-    return content.textContent === 'OPTIONS' && content.scrollWidth <= content.clientWidth;
-  }), true);
+    return { text: content.textContent, value: select.value, scroll: content.scrollWidth, client: content.clientWidth, width: select.clientWidth };
+  });
+  assert.equal(methodValue.text, 'OPTIONS', JSON.stringify(methodValue));
+  assert.ok(methodValue.scroll <= methodValue.client, JSON.stringify(methodValue));
+  assert.equal(await methodPicker.locator('selectedcontent').evaluate(node => getComputedStyle(node).overflowX), 'hidden');
   await methodPicker.selectOption('POST');
   assert.equal(await modes.inputValue(), 'exact');
   await modes.selectOption('pattern');
@@ -928,13 +933,15 @@ test('app profiles isolate requests and Envs, expose mapped URLs, and split/merg
   await page.getByRole('button', { name: 'Rules', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Cart with items', exact: true }).click();
   assert.equal(await page.getByLabel('Request URL', { exact: true }).inputValue(), '/api/cart');
-  const bases = page.getByRole('combobox', { name: 'Mapped base URL', exact: true });
-  assert.equal(await bases.locator('option').count(), 3);
+  assert.equal(await page.getByRole('combobox', { name: 'Mapped base URL', exact: true }).count(), 0);
   assert.deepEqual(dev.baseUrls, ['https://dev.example.test', 'https://app.example.test']);
-  assert.equal(await bases.inputValue(), 'https://dev.example.test');
   assert.match(await page.locator('#rule-environment-preview').textContent(), /https:\/\/dev.example.test\/api\/cart/);
-  await bases.selectOption('http://127.0.0.1:4319');
+  await page.locator('#rule-environment-scope').click();
+  const envOptions = page.getByRole('group', { name: 'Rule Envs', exact: true });
+  await envOptions.getByRole('checkbox', { name: 'Select all', exact: true }).check();
   assert.match(await page.locator('#rule-environment-preview').textContent(), /http:\/\/127.0.0.1:4319\/api\/cart/);
+  assert.equal(await page.locator('#rule-environment-scope').getAttribute('value'), 'all');
+  await page.keyboard.press('Escape');
   await page.locator('#rule-dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
   await manage('@split');
   await page.getByLabel('App name (required)', { exact: true }).fill('DEV app');

@@ -1,4 +1,5 @@
 import { measureTrayWidth } from '../ui/tray-size.mjs';
+import { selectedFirst } from '../ui/dropdowns.mjs';
 import { mountHoverTray } from '../ui/hover-tray.mjs';
 
 const defaultGroups = ['Type', 'Method', 'Status', 'Base URL', 'Path', 'Endpoint'];
@@ -309,6 +310,10 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
         heading.textContent = groups[index] + (selected.size ? ` (${selected.size})` : '');
         return selected;
       });
+      for (const { options } of branches) {
+        const parent = options.values().next().value?.label.parentElement;
+        if (parent) selectedFirst(parent, 'label', label => label.querySelector('input').checked);
+      }
       const count = selections.reduce((total, selected, index) => total + (externalGroups.includes(index) || hiddenGroups.includes(index) ? 0 : selected.size), 0);
       byId('filter-count').textContent = count;
       byId('filter-count').hidden = !count;
