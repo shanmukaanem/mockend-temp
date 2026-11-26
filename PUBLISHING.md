@@ -11,7 +11,7 @@ Existing browser installs loaded from another directory need a one-time move to 
 
 ## Chrome Web Store
 
-1. Register at the [Developer Dashboard](https://chrome.google.com/webstore/devconsole) and upload `release/Mockend-Chrome-Store.zip`.
+1. Register at the [Developer Dashboard](https://chrome.google.com/webstore/devconsole) and upload `release/Mockend-Chrome.zip`.
 2. Add the description and screenshots from `publishing/`, and host [PRIVACY.md](PRIVACY.md) at a publicly accessible URL. Complete the privacy and distribution fields.
 3. Submit for review. Later: increase the version, build, and upload the new ZIP to **the same listing**.
 

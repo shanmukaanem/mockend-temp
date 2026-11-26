@@ -91,6 +91,6 @@ Keep the source repository and full offline bundle private if source access is r
 
 ## Review notes and submission readiness
 
-Load release/chromium/ in Chrome Developer mode. Test recording, creating an endpoint mock, switching its Env, app switching, and split/merge. Use release/Mockend-Chrome-Store.zip for the store upload; its manifest is at the ZIP root. No publication or store-account action has been performed.
+Load release/chromium/ in Chrome Developer mode. Test recording, creating an endpoint mock, switching its Env, app switching, and split/merge. Use release/Mockend-Chrome.zip for the store upload; its manifest is at the ZIP root. No publication or store-account action has been performed.
 
 Before submitting: confirm publisher ownership and contact email; publish and verify the privacy policy; review dashboard data-use disclosures against the local recording behavior; choose distribution visibility; review current screenshots. Local package checks do not verify these account and website requirements.

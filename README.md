@@ -6,7 +6,7 @@ Mockend lets QA teams test how a web app handles a custom API response. One pane
 
 No build tools are needed to install these packages:
 
-- **Chrome / Edge:** Download [Mockend-Chrome.zip](release/Mockend-Chrome.zip), extract it, then open `chrome://extensions` or `edge://extensions`. Enable **Developer mode**, choose **Load unpacked**, and select the extracted `Mockend-Chrome/` folder.
+- **Chrome / Edge:** Download [Mockend-Chrome.zip](release/Mockend-Chrome.zip), extract it, then open `chrome://extensions` or `edge://extensions`. Enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`. The same ZIP is ready for Chrome Web Store uploads.
 - **VS Code Desktop 1.112+:** Download [Mockend.vsix](release/Mockend.vsix). Run **Extensions: Install from VSIX** from the Command Palette, then open **Mockend** in the Activity Bar.
 - **Full offline bundle:** [Mockend.zip](release/Mockend.zip) includes the unpacked browser extension, VSIX, examples, and rebuildable source.
 
@@ -79,7 +79,7 @@ New rules default to Env selector; new API origins join the selected Env when sa
 
 The editor previews Base URL, Path, Endpoint, and the complete resolved targets. The Rules table shows effective base URLs and environment names, with an Env filter. If a rule has no configured targets it matches no requests. Edit selected-environment rules before deleting a referenced environment. Environment settings are included in flow backups; old backups still import. Postman mock exports resolve the selected targets into independent portable routes (up to 200) at export time.
 
-Builds keep only stable filenames in `release/`: `chromium/`, `Mockend.vsix`, `Mockend-Chrome.zip`, `Mockend-Chrome-Store.zip`, `Mockend.zip`, and `SHA256SUMS`. Versioned packages are generated only in `dist/`; duplicate versioned archives are removed from `release/` automatically.
+Builds keep only stable filenames in `release/`: `chromium/`, `Mockend.vsix`, `Mockend-Chrome.zip`, `Mockend.zip`, and `SHA256SUMS`. Versioned packages are generated only in `dist/`; duplicate versioned archives are removed from `release/` automatically.
 
 ## Tables in 1.5.5
 

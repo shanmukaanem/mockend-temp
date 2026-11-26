@@ -6,8 +6,7 @@ const { version } = JSON.parse(readFileSync(new URL('package.json', root), 'utf8
 const packages = [
   [`Mockend-Chrome-${version}.zip`, 'Mockend-Chrome.zip'],
   [`mockend-${version}.vsix`, 'Mockend.vsix'],
-  [`Mockend-${version}.zip`, 'Mockend.zip'],
-  [`Mockend-Chrome-Store-${version}.zip`, 'Mockend-Chrome-Store.zip']
+  [`Mockend-${version}.zip`, 'Mockend.zip']
 ]
 const check = process.argv.includes('--check')
 const versionedPackage = /^(?:mockend(?:-chrome(?:-store)?)?)-\d+(?:\.\d+){2,3}(?:-[\w.-]+)?\.(?:zip|vsix)$/i
@@ -49,8 +48,8 @@ for (const name of expected) {
 }
 // Keep only stable filenames in release; versioned packages belong in dist.
 for (const entry of readdirSync(new URL('release/', root), { withFileTypes: true })) {
-  if (!entry.isFile() || !versionedPackage.test(entry.name)) continue
-  if (check) throw new Error(`Versioned release duplicate: ${entry.name}. Run npm run build.`)
+  if (!entry.isFile() || (!versionedPackage.test(entry.name) && entry.name !== 'Mockend-Chrome-Store.zip')) continue
+  if (check) throw new Error(`Obsolete release package: ${entry.name}. Run npm run build.`)
   unlinkSync(new URL(`release/${entry.name}`, root))
 }
 const checksumFile = new URL('release/SHA256SUMS', root)

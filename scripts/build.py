@@ -192,18 +192,8 @@ def main():
         "[Content_Types].xml": content_types(),
     })
     chrome_zip = DIST / f"Mockend-Chrome-{version}.zip"
-    chrome_instructions = (
-        "1. Extract this ZIP.\n"
-        "2. In desktop Chrome, open chrome://extensions and enable Developer mode.\n"
-        "3. Choose Load unpacked and select the Mockend-Chrome folder containing manifest.json.\n"
-        "4. Open the Mockend extension from the browser toolbar on your app tab. Ctrl+Shift+Y opens the panel when Chrome assigns the shortcut.\n"
-        "5. Trigger a request, filter the request list, then choose Mock at the row end.\n"
-        "\nUpdating an existing unpacked install? Replace the files in the loaded folder,\n"
-        "click Reload on its extension card, then reopen the Mockend side panel.\n"
-    )
-    archive(chrome_zip, {**tree(chromium, "Mockend-Chrome/"), "INSTALL.txt": chrome_instructions.encode()})
-    # Store uploads require manifest.json at the ZIP root.
-    archive(DIST / f"Mockend-Chrome-Store-{version}.zip", tree(chromium))
+    # One root-level package serves both store uploads and unpacked installation.
+    archive(chrome_zip, tree(chromium))
     bundle = DIST / f"Mockend-{version}.zip"
     archive(bundle, {
         **tree(chromium, "chromium/"),
