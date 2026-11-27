@@ -1,4 +1,7 @@
-import { mountSplitButtons } from './split-buttons.mjs';
+import { responseScenarios, activeResponseScenario, effectiveRules, setRuleState, addResponseScenario, removeResponseScenario, pruneResponseScenarios } from '../core/variants.mjs';
+import { mountDataEntryForms, mountEntryActions, originFromDisplay } from './data-entry.mjs';
+import { parametersFromExample } from '../core/parameter-examples.mjs';
+import { mountSplitButtons, mountButtonStrip } from './split-buttons.mjs';
 import { baseUrlLabel } from './url-label.mjs';
 import { selectedFirst, fitSelect, prepareSelect, replaceSelectOptions, longestOptionWidth, clippedSelectValue, clippedControlValue, mountSelectLayouts } from './dropdowns.mjs';
 import { urlParts } from '../core/url-parts.mjs';
@@ -17,13 +20,14 @@ import { mapRuleEnvironment } from '../core/environment-rules.mjs';
 import { compileSearch, mountFilters, requestMatches, requestSearchText } from '../chromium/request-filters.mjs';
 import { mountJsonEditor } from './json-editor.mjs';
 import { HTTP_METHODS, MAX_CONFIG_BYTES, MAX_RESPONSE_BYTES, NETWORK_ERRORS, RESOURCE_TYPES, exportConfig, validateConfig, validateHeaders } from '../core/config.mjs';
-import { logUrl, ruleUrls } from '../core/matcher.mjs';
+import { logUrl, ruleUrls, matchingMode, endpointName, endpointConflicts } from '../core/matcher.mjs';
 
 const browser = document.documentElement.dataset.host === 'chromium';
 const { request, openFile, saveFile, connectRecording, copyToClipboard } = await import(browser ? '../chromium/bridge.mjs' : '../vscode/bridge.mjs');
 
 const $ = id => document.getElementById(id);
 mountCompactControls();
+mountDataEntryForms();
 mountSelectLayouts();
 mountOverlayScrollbars();
 mountTabSliders();
@@ -33,11 +37,14 @@ document.addEventListener('invalid', event => {
 }, true);
 const fitRuleColumns = mountTableColumns($('rules').closest('table'), 'mockend.columns.rules.v4', [
   { min: 40, max: 56 }, { min: 64, max: 360, grow: 2 }, { min: 56, max: 140, width: 76 },
-  { min: 96, max: 420, width: 160, lines: 'span, small' }, { min: 48, max: 300, grow: 2 },
+  { min: 112, max: 560, width: 220, lines: 'span, small' }, { min: 48, max: 240, grow: 1 },
   { min: 60, max: 180, width: 84 }, { min: 72, max: 180, width: 88 }, { min: 60, max: 100 },
-  { min: 36, max: 140, width: 44 }, { min: 88, max: 160, width: 88 }
+  { min: 36, max: 140, width: 44 }, { min: 112, max: 160, width: 112 }
 ]);
 mountRowHover($('rules').closest('.request-table'), $('rules'));
+const fitEnvironmentColumns = mountTableColumns($('environment-url-rows').closest('table'), 'mockend.columns.environment-urls.v1', [
+  { min: 72, max: 240, grow: 1 }, { min: 120, max: 600, grow: 2 }, { min: 68, max: 120, width: 68 }
+]);
 const activeScenario = config => config.scenarios.find(scenario => scenario.id === config.activeScenarioId);
 const pretty = value => JSON.stringify(value, null, 2);
 const field = (form, name) => form.elements.namedItem(name);
@@ -45,12 +52,15 @@ const makeId = () => crypto.randomUUID();
 
 let state;
 let readCapturedOrigins = () => [];
+let readCapturedRoutes = () => [];
 let view = 'requests';
 let busy = false;
 let epoch = 0;
 let ruleDraft;
 let scenarioDraft;
 let refreshing;
+let followedOrigin;
+let appNoticeOrigin;
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -99,10 +109,11 @@ function renderConnection() {
     (control.dataset.applicationAction === '@merge' && (state?.applications?.length ?? 1) < 2) ||
     (control.dataset.applicationAction === '@split' && (state?.config.environments?.length ?? 0) < 2);
   $('toggle-filtered-mocks').disabled = busy || !visibleRuleIds.size;
-  $('toggle-all-mocks').disabled = busy || !state?.config || !activeScenario(state.config).rules.length;
   const notice = connection?.notice || state?.message || '';
   if ($('connection-notice').dataset.message !== notice) message('connection-notice', notice);
   $('toggle').dataset.state = active ? 'recording' : 'stopped';
+  $('toggle').setAttribute('aria-pressed', String(Boolean(active)));
+  renderMockSummary();
   $('capture-live').textContent = active ? 'Mocking active' : 'Mocking off';
   const site = current?.url ?? '';
   if (state?.config && $('mock-environment').dataset.site !== site) {
@@ -110,6 +121,72 @@ function renderConnection() {
     renderEnvironments();
   }
 }
+
+function renderMockSummary() {
+  if (!state?.config) return;
+  const flow = activeScenario(state.config);
+  const visible = effectiveRules(flow).filter(rule => visibleRuleIds.has(rule.id));
+  $('mock-state-summary').textContent = `${state.connection.active ? 'Mocking enabled' : 'Mocking off'} \u00b7 ${visible.filter(rule => rule.enabled).length} of ${visible.length} filtered rules active \u00b7 Scenario: ${activeResponseScenario(flow).name}`;
+  $('mock-state-summary').dataset.active = String(Boolean(state.connection.active));
+}
+let responseScenarioDraft;
+function renderResponseScenarios() {
+  const flow = activeScenario(state.config);
+  const scenarios = responseScenarios(flow);
+  const current = activeResponseScenario(flow);
+  $('response-scenario-name').textContent = current.name;
+  $('response-scenario-options').replaceChildren(...scenarios.map(item => {
+    const row = element('div', 'scenario-option');
+    const choice = button('scenario-choice', item.name, async () => {
+      $('response-scenario-menu').hidePopover();
+      if (item.id === current.id) return;
+      await save(config => { const flow = activeScenario(config); flow.variants ??= responseScenarios(flow); flow.activeVariantId = item.id; });
+    });
+    choice.setAttribute('aria-pressed', String(item.id === current.id)); choice.dataset.clipTooltip = '';
+    const actions = element('div', 'scenario-actions');
+    for (const [mode, path] of [['rename', 'M4 16v4h4L20 8l-4-4L4 16Zm10-10 4 4'], ['duplicate', 'M8 8h12v12H8V8Zm8-4H4v12'], ['delete', 'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14']]) {
+      const control = button('icon scenario-action', '', async () => {
+        $('response-scenario-menu').hidePopover();
+        if (mode === 'delete') {
+          const revision = state.revision;
+          if (await confirmAction('Delete scenario?', `Remove ${item.name}? Shared API rules remain in this Flow.`, 'Delete scenario')) await save(config => removeResponseScenario(config.scenarios.find(target => target.id === flow.id), item.id), 'feedback', revision);
+          return;
+        }
+        openResponseScenario(mode, item);
+      }, `${mode[0].toUpperCase() + mode.slice(1)} scenario ${item.name}`);
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+      const shape = document.createElementNS(svg.namespaceURI, 'path'); shape.setAttribute('d', path); svg.append(shape); control.append(svg);
+      control.disabled = mode === 'delete' && scenarios.length < 2;
+      actions.append(control);
+    }
+    mountButtonStrip(actions); row.append(choice, actions); return row;
+  }));
+  selectedFirst($('response-scenario-options'), '.scenario-option', row => row.querySelector('.scenario-choice').getAttribute('aria-pressed') === 'true');
+  $('rule-scenario-name').textContent = flow.name + (flow.variants ? ' / ' + current.name : '');
+}
+function openResponseScenario(mode, item = activeResponseScenario(activeScenario(state.config))) {
+  responseScenarioDraft = { mode, id: item.id, revision: state.revision };
+  $('response-scenario-menu').hidePopover();
+  $('response-scenario-title').textContent = mode === 'rename' ? 'Rename scenario' : mode === 'duplicate' ? 'Duplicate scenario' : 'New scenario';
+  $('response-scenario-input').value = mode === 'new' ? '' : item.name + (mode === 'duplicate' ? ' copy' : '');
+  $('response-scenario-dialog').showModal(); $('response-scenario-input').focus(); $('response-scenario-input').select();
+}
+mountDropdown($('response-scenario'), $('response-scenario-menu'));
+$('new-response-scenario').addEventListener('click', () => openResponseScenario('new'));
+$('cancel-response-scenario').addEventListener('click', () => $('response-scenario-dialog').close());
+$('response-scenario-form').addEventListener('submit', async event => {
+  event.preventDefault(); if (!responseScenarioDraft || busy) return;
+  const draft = responseScenarioDraft; const name = $('response-scenario-input').value.trim();
+  if (await save(config => {
+    const flow = activeScenario(config);
+    if (responseScenarios(flow).some(item => item.id !== (draft.mode === 'rename' ? draft.id : '') && item.name === name)) throw new Error('Choose a unique scenario name.');
+    if (draft.mode === 'rename') { flow.variants ??= responseScenarios(flow); flow.activeVariantId ??= flow.variants[0].id; flow.variants.find(item => item.id === draft.id).name = name; }
+    else {
+      flow.variants ??= responseScenarios(flow); if (draft.mode === 'duplicate') flow.activeVariantId = draft.id;
+      addResponseScenario(flow, name);
+    }
+  }, 'feedback', draft.revision)) $('response-scenario-dialog').close();
+});
 
 function renderConfig() {
   const config = state.config;
@@ -125,12 +202,13 @@ function renderConfig() {
     if (app.id === state.applicationId) row.append(element('span', 'environment-active', 'Active'));
     return row;
   }));
-  $('managed-app-name').textContent = apps.find(app => app.id === state.applicationId)?.name ?? 'My App';
+  if (!$('managed-app-name').querySelector('input')) $('managed-app-name').textContent = apps.find(app => app.id === state.applicationId)?.name ?? 'My App';
   $('managed-app-summary').textContent = `${config.environments?.length ?? 0} Envs · ${config.scenarios.length} Flows · ${config.scenarios.reduce((count, flow) => count + flow.rules.length, 0)} rules`;
   document.querySelector('[data-application-action="@merge"]').disabled = apps.length < 2;
   document.querySelector('[data-application-action="@split"]').disabled = (config.environments?.length ?? 0) < 2;
   if (!$('app-url').value) $('app-url').value = apps.find(app => app.id === state.applicationId)?.url ?? '';
   $('scenario-name').textContent = activeScenario(config).name;
+  renderResponseScenarios();
   $('scenario-options').replaceChildren(...config.scenarios.map(item => {
     const row = element('div', 'scenario-option');
     const option = button('scenario-choice', item.name, () => selectScenario(item.id));
@@ -157,6 +235,7 @@ function renderConfig() {
       control.disabled = action === 'Delete' && config.scenarios.length < 2;
       actions.append(control);
     }
+    mountButtonStrip(actions);
     row.append(actions);
     return row;
   }));
@@ -166,6 +245,27 @@ function renderConfig() {
   for (const id of ['scenario', 'new-scenario', 'add-rule', 'bypass', 'import', 'paste-rules', 'export', 'copy-scenarios']) $(id).disabled = false;
   renderEnvironments();
   renderRules();
+}
+
+function editRecordName(host, trigger, label, commit) {
+  if (host.querySelector('input')) return;
+  const original = host.textContent;
+  const editor = element('span', 'record-name-editor');
+  const input = element('input'); input.name = 'recordName'; input.value = original; input.required = true; input.maxLength = 100; input.setAttribute('aria-label', label);
+  const cancel = () => { host.textContent = original; trigger.hidden = false; trigger.focus(); };
+  const submit = button('primary', 'Save', async () => {
+    input.setCustomValidity(input.value.trim() ? '' : 'Enter a name.');
+    if (!input.reportValidity()) return;
+    if (await commit(input.value.trim())) { trigger.hidden = false; host.textContent = input.value.trim(); trigger.focus(); }
+  }, 'Save name');
+  input.addEventListener('input', () => input.setCustomValidity(''));
+  editor.addEventListener('keydown', event => {
+    if (event.isComposing) return;
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancel(); }
+    if (event.key === 'Enter' && event.target === input) { event.preventDefault(); submit.click(); }
+  });
+  const actions = element('span'); actions.append(button('secondary', 'Cancel', cancel, 'Cancel name'), submit); mountEntryActions(actions);
+  editor.append(input, actions); host.replaceChildren(editor); trigger.hidden = true; input.focus(); input.select();
 }
 
 let applicationMode = 'new';
@@ -203,7 +303,8 @@ async function openSelectedApplication() {
   if (await run('open-app', { url: app.url }, 'feedback', 'App selected. ') && browser && $('record-toggle').dataset.state === 'stopped') $('record-toggle').click();
 }
 async function manageApplicationAction(id) {
-  if (['@new', '@rename', '@merge', '@split'].includes(id)) { editApplication(id.slice(1)); return; }
+  if (id === '@rename') { editRecordName($('managed-app-name'), $('rename-application'), 'App name (required)', async name => run('application-rename', { name, revision: state.revision })); return; }
+  if (['@new', '@merge', '@split'].includes(id)) { editApplication(id.slice(1)); return; }
   if (id === '@export') {
     try { await saveFile('mockend.apps.json', JSON.stringify(await request('export-applications'), null, 2)); }
     catch (error) { message('feedback', error.message, true); }
@@ -260,6 +361,12 @@ let environmentDraft;
 let selectedEnvironmentId;
 let environmentUrlDraft;
 const environmentRowDrafts = new Map();
+let environmentRenderKey;
+const environmentAddRow = $('environment-url-rows').insertRow();
+environmentAddRow.id = 'environment-add-row'; environmentAddRow.hidden = true;
+const environmentAddCell = environmentAddRow.insertCell(); environmentAddCell.colSpan = 3;
+environmentAddCell.append($('environment-url-form'));
+
 function renderEnvironments() {
   const environments = state.config.environments ?? [];
   const picker = $('mock-environment');
@@ -278,6 +385,9 @@ function renderEnvironments() {
     : 'Use the original rule URLs';
   if (!environments.some(env => env.id === selectedEnvironmentId)) selectedEnvironmentId = environments.find(env => env.id === state.config.settings.environmentId)?.id ?? environments[0]?.id;
   const selected = environments.find(env => env.id === selectedEnvironmentId);
+  const detailKey = JSON.stringify([environments, selectedEnvironmentId, state.config.settings.environmentId, environmentDraft, [...environmentRowDrafts.keys()]]);
+  if (environmentRenderKey === detailKey) return;
+  environmentRenderKey = detailKey;
   $('environment-empty').hidden = Boolean(selected || environmentDraft);
   $('environment-list').replaceChildren(...environments.map(env => {
     const row = button('environment-option', '', () => {
@@ -298,7 +408,7 @@ function renderEnvironments() {
   $('environment-actions').hidden = !selected || Boolean(environmentDraft);
   $('environment-urls').hidden = !selected || Boolean(environmentDraft);
   $('activate-environment').disabled = !selected || selected.id === state.config.settings.environmentId || busy;
-  if (!selected) { $('environment-url-rows').replaceChildren(); return; }
+  if (!selected) { $('environment-url-rows').replaceChildren(environmentAddRow); return; }
   $('environment-url-rows').replaceChildren(...selected.baseUrls.map(origin => {
     const row = element('tr');
     const service = element('td', '', selected.services?.[origin] ?? '—');
@@ -310,17 +420,21 @@ function renderEnvironments() {
     if (draft) {
       row.dataset.editing = '';
       const editable = (cell, name, value) => {
-        const input = element('span', 'environment-cell-editor', value);
+        const input = element('span', 'environment-cell-editor', name === 'value' ? baseUrlLabel(value) : value);
         input.contentEditable = 'plaintext-only'; input.setAttribute('role', 'textbox');
         input.setAttribute('aria-label', `${name === 'service' ? 'Service name' : 'Base URL'} for ${origin}`);
         input.setAttribute('aria-multiline', 'false'); input.spellcheck = false;
-        input.addEventListener('input', () => { draft[name] = input.textContent; input.removeAttribute('aria-invalid'); });
+        input.addEventListener('input', () => { draft[name] = name === 'value' && !/^https?:\/\//i.test(input.textContent.trim()) ? originFromDisplay(input.textContent, draft.origin) : input.textContent; input.removeAttribute('aria-invalid'); });
         cell.replaceChildren(input); return input;
       };
       editable(service, 'service', draft.service);
       editable(url, 'value', draft.value);
       const commit = () => saveEnvironmentRow(key);
-      actions.append(button('secondary', 'Save', commit, `Save base URL ${origin}`));
+      const cancel = () => {
+        environmentRowDrafts.delete(key); renderEnvironments();
+        $('environment-url-rows').querySelector(`tr[data-origin="${CSS.escape(origin)}"] button`)?.focus();
+      };
+      const entry = element('span'); entry.append(button('secondary', 'Cancel', cancel, `Cancel base URL ${origin}`), button('primary', 'Save', commit, `Save base URL ${origin}`)); mountEntryActions(entry); actions.append(entry);
       row.addEventListener('keydown', event => {
         if (event.isComposing) return;
         if (event.key === 'Escape') {
@@ -336,7 +450,8 @@ function renderEnvironments() {
     remove.disabled = selected.baseUrls.length === 1;
     if (remove.disabled) remove.title = 'Keep at least one base URL per Env';
     actions.append(edit, remove); row.append(service, url, actions); return row;
-  }));
+  }), environmentAddRow);
+  fitEnvironmentColumns();
 }
 function environmentIcon(path, action, label) {
   const control = button('secondary environment-icon', '', action, label);
@@ -348,7 +463,7 @@ function environmentIcon(path, action, label) {
 function closeEnvironmentEditors(clearRows = true) {
   if (clearRows) environmentRowDrafts.clear();
   $('environment-form').hidden = true; environmentDraft = undefined;
-  $('environment-url-form').hidden = true; environmentUrlDraft = undefined;
+  $('environment-url-form').hidden = true; environmentUrlDraft = undefined; environmentAddRow.hidden = true;
   $('add-environment-url').setAttribute('aria-expanded', 'false');
 }
 function editEnvironment(environment) {
@@ -365,7 +480,7 @@ function editEnvironment(environment) {
   renderEnvironments(); field(form, 'environmentName').focus();
 }
 function environmentOrigin(input) {
-  let url; try { url = new URL(input.value.trim()); } catch { /* Report the useful constraint below. */ }
+  let url; try { url = new URL(originFromDisplay(input.value)); } catch { /* Report the useful constraint below. */ }
   if (!url || !/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
     input.setCustomValidity('Enter an HTTP(S) origin, such as https://api.example.com or http://localhost:3000. Keep paths on the rule.');
     return undefined;
@@ -387,9 +502,9 @@ function editEnvironmentUrl(origin) {
     return;
   }
   environmentUrlDraft = { id: env.id, revision: state.revision };
-  const form = $('environment-url-form'); form.reset(); form.hidden = false;
+  const form = $('environment-url-form'); form.reset(); form.hidden = false; environmentAddRow.hidden = false;
   field(form, 'origin').setCustomValidity('');
-  $('save-environment-url').textContent = 'Add URL';
+  setControlLabel($('save-environment-url'), 'Add URL');
   $('add-environment-url').setAttribute('aria-expanded', 'true');
   field(form, 'service').focus();
 }
@@ -406,7 +521,7 @@ async function saveEnvironmentRow(key) {
   if (!env?.baseUrls.includes(draft.origin) || (env.services?.[draft.origin] ?? '') !== draft.originalService) {
     fail('This URL changed elsewhere. Press Escape and reopen the row before saving.'); return;
   }
-  let parsed; try { parsed = new URL(draft.value.trim()); } catch { /* Validate below. */ }
+  let parsed; try { parsed = new URL(originFromDisplay(draft.value, draft.origin)); } catch { /* Validate below. */ }
   if (!parsed || !/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/' || draft.value.length > 2048) {
     fail('Enter an HTTP(S) origin without a path, query, or credentials.'); return;
   }
@@ -439,7 +554,8 @@ async function deleteEnvironmentUrl(origin) {
   }, 'environment-feedback', revision)) { environmentRowDrafts.delete(`${env.id} ${origin}`); closeEnvironmentEditors(false); renderEnvironments(); }
 }
 $('rename-environment').addEventListener('click', () => {
-  editEnvironment(state.config.environments.find(env => env.id === selectedEnvironmentId));
+  const env = state.config.environments.find(env => env.id === selectedEnvironmentId);
+  editRecordName($('environment-detail-title'), $('rename-environment'), 'Env name (required)', name => save(config => { config.environments.find(item => item.id === env.id).name = name; }, 'environment-feedback'));
 });
 $('activate-environment').addEventListener('click', async () => {
   const id = selectedEnvironmentId;
@@ -562,21 +678,131 @@ $('environment-form').addEventListener('submit', async event => {
 function ruleEnvironmentIds() {
   return [...$('rule-environment-options').querySelectorAll('input[data-env-id]:checked')].map(input => input.value);
 }
+function routeValue(form) {
+  const mode = field(form, 'urlMode').value;
+  const raw = field(form, 'url').value.trim();
+  if (mode === 'pattern' || mode === 'exact') return raw;
+  if (mode === 'path') return new URL(raw, 'https://mockend.invalid').pathname;
+  if (/^https?:\/\//.test(raw) || raw.startsWith('/')) return new URL(raw, 'https://mockend.invalid').pathname;
+  if (!raw || /[\s?#*]/.test(raw)) throw new Error('Enter an endpoint name or paste its URL.');
+  const anchor = ruleDraft.endpointPath;
+  return anchor ? anchor.replace(/[^/]+\/?$/, raw) : '/' + raw;
+}
+
+function syncRouteMode(form) {
+  if (!ruleDraft) return;
+  const mode = field(form, 'urlMode').value;
+  const input = field(form, 'url');
+  if (mode !== 'exact' && /^https?:\/\//.test(input.value)) {
+    try { const source = new URL(input.value); if (!source.hostname.includes('*')) { ruleDraft.sourceUrl = source.href; ruleDraft.baseUrl = source.origin; ruleDraft.endpointOrigin = source.origin; } } catch { /* Let validation report incomplete URLs. */ }
+  }
+  const previous = ruleDraft.currentMode;
+  if (previous && mode !== previous) {
+    let parsed;
+    try { const current = previous === 'endpoint' && !input.value.includes('/') && ruleDraft.endpointPath ? ruleDraft.endpointPath.replace(/[^/]+\/?$/, input.value) : input.value; parsed = new URL(current, ruleDraft.baseUrl || 'https://mockend.invalid'); } catch { /* Keep an incomplete draft editable. */ }
+    if (parsed) {
+      if (previous !== 'endpoint' || input.value.includes('/')) ruleDraft.endpointPath = parsed.pathname;
+      if (mode === 'exact' && ruleDraft.sourceUrl) { try { const captured = new URL(ruleDraft.sourceUrl); if (captured.pathname === parsed.pathname) parsed.search = captured.search; } catch { /* No captured query. */ } }
+      input.value = mode === 'endpoint' ? endpointName(parsed.href) || '/' : mode === 'path' ? parsed.pathname : mode === 'exact' ? parsed.href : parsed.pathname + parsed.search;
+    }
+  }
+  ruleDraft.currentMode = mode;
+  const label = { endpoint: 'Endpoint', path: 'Full path', exact: 'Exact URL', pattern: 'Pattern' }[mode];
+  $('rule-url-label').textContent = 'Endpoint';
+  const advancedUrl = $('rule-match-url');
+  const endpointOutput = $('rule-endpoint-value');
+  const destination = mode === 'endpoint' ? form.querySelector('.route-endpoint') : advancedUrl;
+  if (input.parentElement !== destination) destination.append(input);
+  advancedUrl.hidden = mode === 'endpoint'; endpointOutput.hidden = mode === 'endpoint';
+  $('advanced-url-label').textContent = label;
+  form.querySelector('.route-advanced > summary').textContent = 'Matching: ' + label;
+  let path; try { path = routeValue(form); } catch { path = input.value; }
+  const parts = urlParts(path);
+  endpointOutput.textContent = parts.endpoint === '/' ? '' : parts.endpoint;
+  if (document.activeElement !== $('rule-path')) $('rule-path').value = parts.ingress === '/' ? '' : parts.ingress;
+  $('rule-path').disabled = mode !== 'endpoint';
+  $('rule-full-path').textContent = mode === 'endpoint' ? ruleDraft.endpointPath || (input.value ? '/' + input.value : '') : input.value;
+  $('rule-full-path').dataset.tooltip = $('rule-full-path').textContent;
+  input.setAttribute('aria-label', `Request URL / ${label}`);
+  input.placeholder = mode === 'endpoint' ? 'cart or paste an API URL' : mode === 'exact' ? 'https://api.example.com/api/cart?mode=qa' : '/api/cart';
+  $('rule-environment-scope').disabled = mode === 'exact';
+}
+
+function responseMime(response) {
+  return Object.entries(response?.headers ?? {}).find(([name]) => name.toLowerCase() === 'content-type')?.[1];
+}
+function responseFormat(response, text) {
+  if (response?.kind === 'error') return 'error';
+  if (response?.format) return response.format;
+  if (!text.trim()) return 'empty';
+  if (/^text\/html\b/i.test(responseMime(response) ?? '') || /^\s*(?:<!doctype\s+html|<[a-z][^>]*>)/i.test(text)) return 'html';
+  try { JSON.parse(text); return 'json'; } catch { return 'text'; }
+}
+function selectResponseFormat(form, format) {
+  field(form, 'responseFormat').value = format;
+  field(form, 'kind').value = format === 'error' ? 'error' : format === 'json' ? 'json' : 'text';
+  mountButtonStrip($('response-format'));
+}
+function applyBaseOverrides(config) {
+  if (field($('rule-form'), 'urlMode').value === 'exact') return;
+  const scope = field($('rule-form'), 'environmentScope').value; const selected = ruleEnvironmentIds();
+  for (const [before, after] of ruleDraft.baseOverrides ?? []) for (const env of config.environments ?? []) {
+    if (!env.baseUrls.includes(before) || !ruleDraft.baseOverrideEnvs.get(before)?.includes(env.id) || (scope !== 'all' && !selected.includes(env.id))) continue;
+    env.baseUrls = [...new Set(env.baseUrls.map(base => base === before ? after : base))];
+    if (env.services?.[before]) { env.services[after] = env.services[before]; delete env.services[before]; }
+    if (!config.environments.some(item => item.baseUrls.includes(before))) for (const flow of config.scenarios) for (const candidate of flow.rules) if (candidate.endpointOrigin === before) candidate.endpointOrigin = after;
+  }
+}
+
 function syncRuleEnvironment(form) {
-  const url = field(form, 'url').value.trim();
+  let url; try { url = routeValue(form); } catch { url = field(form, 'url').value.trim(); }
   const parts = urlParts(url);
   const scope = field(form, 'environmentScope').value;
   const ids = ruleEnvironmentIds();
-  const targets = ruleUrls({ url, environmentScope: scope, environmentIds: ids }, state.config);
+  const targets = ruleUrls({ url, matchMode: field(form, 'urlMode').value, environmentScope: scope, environmentIds: ids }, state.config);
   const bases = [...new Set(targets.map(target => urlParts(target).baseUrl).filter(Boolean))];
   if (!bases.length && !state.config.environments?.length && ruleDraft?.baseUrl) bases.push(ruleDraft.baseUrl);
+  const source = ruleDraft?.endpointOrigin ?? ruleDraft?.baseUrl;
+  const owner = state.config.environments?.find(env => env.baseUrls.includes(source));
+  const service = owner?.services?.[source];
+  const preferred = bases.includes(source) ? source : service ? (state.config.environments ?? []).filter(env => scope === 'all' || ids.includes(env.id)).flatMap(env => env.baseUrls.filter(base => env.services?.[base] === service)).find(base => bases.includes(base)) : undefined;
+  if (bases.length > 1) bases.splice(0, bases.length, preferred ?? bases[0]);
+
   $('rule-base-preview').textContent = bases.map(baseUrlLabel).join(', ');
   $('rule-base-preview').dataset.tooltip = bases.join(', ');
+  const mappings = bases.map(base => ({ base, envs: (state.config.environments ?? []).filter(env => (scope === 'all' || ids.includes(env.id)) && env.baseUrls.includes(base)).map(env => env.name) }));
+  const signature = JSON.stringify(mappings);
+  if ($('rule-base-fields').dataset.mapping !== signature) {
+    $('rule-base-fields').dataset.mapping = signature;
+    $('rule-base-fields').replaceChildren(...mappings.map(({ base, envs }) => {
+      const group = element('div', 'rule-origin-field');
+      const label = element('span', '', 'Base URL');
+      const value = element('strong', 'rule-origin-value', baseUrlLabel(base));
+      value.dataset.clipTooltip = ''; value.dataset.tooltip = base;
+      value.contentEditable = 'plaintext-only'; value.setAttribute('role', 'textbox'); value.setAttribute('aria-label', `Base URL${envs.length ? ` (${envs.join(', ')})` : ''}`); value.setAttribute('aria-multiline', 'false'); value.spellcheck = false;
+
+      value.addEventListener('blur', () => {
+        try {
+          const parsed = new URL(originFromDisplay(value.textContent, ruleDraft.baseOverrides.get(base) ?? base));
+          if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('Use an HTTP(S) origin without a path.');
+          if (field(form, 'urlMode').value === 'exact') {
+            const url = new URL(field(form, 'url').value); field(form, 'url').value = parsed.origin + url.pathname + url.search;
+          } else {
+            if (/^https?:\/\//.test(field(form, 'url').value)) { const source = new URL(field(form, 'url').value); field(form, 'url').value = parsed.origin + source.pathname + source.search; ruleDraft.sourceUrl = field(form, 'url').value; }
+            ruleDraft.baseOverrides.set(base, parsed.origin); ruleDraft.baseOverrideEnvs.set(base, (state.config.environments ?? []).filter(env => (scope === 'all' || ids.includes(env.id)) && env.baseUrls.includes(base)).map(env => env.id)); if (!envs.length) ruleDraft.baseUrl = parsed.origin; }
+          value.textContent = baseUrlLabel(parsed.origin); value.dataset.tooltip = parsed.origin; value.removeAttribute('aria-invalid'); validateRuleFields(form);
+        } catch (error) { value.setAttribute('aria-invalid', 'true'); toast(error.message, { key: 'base-url-edit', error: true }); }
+      });
+      value.addEventListener('keydown', event => { if (event.isComposing) return; if (event.key === 'Enter') { event.preventDefault(); value.blur(); } if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); value.textContent = baseUrlLabel(ruleDraft.baseOverrides.get(base) ?? base); value.blur(); } });
+      group.append(label, value); return group;
+    }));
+  }
+
   $('rule-ingress-preview').textContent = parts.ingress === '/' ? '' : parts.ingress;
   $('rule-endpoint-preview').textContent = parts.endpoint === '/' ? '' : parts.endpoint;
   for (const id of ['rule-base-preview', 'rule-ingress-preview', 'rule-endpoint-preview']) { $(id).dataset.clipTooltip = ''; $(id).dataset.tooltip = $(id).textContent; }
   const names = (state.config.environments ?? []).filter(env => ids.includes(env.id)).map(env => env.name);
-  $('rule-environment-value').textContent = scope === 'all' ? 'Select all' : names.join(', ') || 'Select Envs';
+  $('rule-environment-value').textContent = field(form, 'urlMode').value === 'exact' ? 'Exact URL' : scope === 'all' ? 'All environments' : names.join(', ') || 'Select Envs';
   $('rule-environment-preview').textContent = targets.length ? `Targets: ${targets.join(' | ')}. Query and body conditions still apply.` : 'No targets. Add an Env in Settings or paste a full API URL.';
 }
 const ruleEnvMenu = $('rule-environment-options');
@@ -594,7 +820,7 @@ ruleEnvMenu.addEventListener('change', event => {
 });
 function fillRuleEnvs(rule) {
   const environments = state.config.environments ?? [];
-  const allSelected = rule?.environmentScope === 'all' || ((!rule?.environmentScope || rule.environmentScope === 'active') && state.config.settings.environmentId === '*') || !environments.length;
+  const allSelected = !rule || rule?.environmentScope === 'all' || ((!rule?.environmentScope || rule.environmentScope === 'active') && state.config.settings.environmentId === '*') || !environments.length;
   const ids = rule?.environmentScope === 'selected' ? rule.environmentIds ?? []
     : [state.config.settings.environmentId ?? environments[0]?.id];
   ruleEnvControl.value = allSelected ? 'all' : 'selected';
@@ -624,18 +850,23 @@ let ruleRegex = false;
 let ruleUrlOnly = false;
 let ruleInverted = false;
 let visibleRuleIds = new Set();
+let ruleFilterApp;
+function restoreRuleFilters() {
+  ruleFilterApp = state.applicationId ?? 'default';
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(`mockend.rule-filters.${ruleFilterApp}`) ?? 'null'); } catch { /* Storage is optional. */ }
+  ruleFilters.restore(saved?.selections);
+  $('rules-request-query').value = saved?.query ?? '';
+  ruleRegex = saved?.regex ?? false; ruleUrlOnly = saved?.urlOnly ?? false; ruleInverted = saved?.inverted ?? false;
+}
+
 $('rules-invert-results').addEventListener('click', () => { ruleInverted = !ruleInverted; renderRules(); });
-$('toggle-filtered-mocks').addEventListener('click', async () => {
-  if (!state || busy || !visibleRuleIds.size) return;
-  const ids = new Set(visibleRuleIds);
-  const enabled = !activeScenario(state.config).rules.filter(rule => ids.has(rule.id)).every(rule => rule.enabled);
-  await save(config => { for (const rule of activeScenario(config).rules) if (ids.has(rule.id)) rule.enabled = enabled; });
-});
-$('toggle-all-mocks').addEventListener('click', async () => {
-  if (!state || busy) return;
-  const enabled = !activeScenario(state.config).rules.every(rule => rule.enabled);
-  await save(config => { for (const rule of activeScenario(config).rules) rule.enabled = enabled; });
-});
+mountDropdown($('toggle-filtered-mocks'), $('bulk-mock-menu'));
+async function applyMockState(ids, enabled) {
+  if (!state || busy || !ids.size) return;
+  await save(config => { const flow = activeScenario(config); for (const rule of flow.rules) if (ids.has(rule.id)) setRuleState(flow, rule.id, { enabled }); });
+  renderRules();
+}
 let ruleOrder = { column: 'id', direction: 1 };
 for (const id of ['regex-toggle', 'url-only-toggle']) $('rules-' + id).addEventListener('click', () => {
   if (id === 'regex-toggle') ruleRegex = !ruleRegex;
@@ -651,12 +882,12 @@ for (const control of document.querySelectorAll('[data-rule-sort]')) control.add
 
 function renderRules() {
   if (!state) return;
-  const rules = activeScenario(state.config).rules;
+  const rules = effectiveRules(activeScenario(state.config));
   const items = rules.map((rule, index) => {
     const parts = urlParts(rule.url);
     const type = rule.resource === 'api' ? 'Fetch/XHR' : rule.resource === 'any' ? 'Any HTTP request' : rule.resource;
     const status = rule.response.kind === 'error' ? 0 : rule.response.status;
-    const enabled = rule.enabled ? 'On' : 'Off';
+    const enabled = rule.enabled ? 'Active' : 'Excluded';
     const scope = rule.environmentScope ?? 'original';
     const environments = state.config.environments ?? [];
     const original = scope === 'original' || (scope === 'active' && !state.config.settings.environmentId);
@@ -670,6 +901,8 @@ function renderRules() {
       values: [type, rule.method, [Math.floor(status / 100), `http:${status}`], targets.length ? targets : parts.baseUrl, parts.ingress, parts.endpoint, enabled, selected.length ? selected.map(env => env.name) : environmentLabel] };
   });
   const selections = ruleFilters.update(items);
+  try { localStorage.setItem(`mockend.rule-filters.${ruleFilterApp}`, JSON.stringify({ selections: ruleFilters.snapshot(), query: $('rules-request-query').value, regex: ruleRegex, urlOnly: ruleUrlOnly, inverted: ruleInverted })); } catch { /* Storage is optional. */ }
+
   const hasFilter = Boolean($('rules-request-query').value.trim() || selections.some(selected => selected.size));
   if (!hasFilter) ruleInverted = false;
   $('rules-invert-results').hidden = !hasFilter;
@@ -693,15 +926,15 @@ function renderRules() {
     return validSearch && (ruleInverted ? !included : included);
   });
   visibleRuleIds = new Set(visible.map(item => item.rule.id));
-  const filteredEnabled = visible.length > 0 && visible.every(item => item.rule.enabled);
-  setControlLabel($('toggle-filtered-mocks'), filteredEnabled ? 'Disable filtered mocks' : 'Enable filtered mocks');
-  $('toggle-filtered-mocks').disabled = !visible.length || busy;
-  $('toggle-filtered-mocks').setAttribute('aria-pressed', filteredEnabled ? 'true' : visible.some(item => item.rule.enabled) ? 'mixed' : 'false');
-  const allEnabled = rules.length > 0 && rules.every(rule => rule.enabled);
-  setControlLabel($('toggle-all-mocks'), allEnabled ? 'Disable all mocks' : 'Enable all mocks');
-  $('toggle-all-mocks').disabled = !rules.length || busy;
-  $('toggle-all-mocks').setAttribute('aria-pressed', allEnabled ? 'true' : rules.some(rule => rule.enabled) ? 'mixed' : 'false');
-  $('toggle-all-mocks').dataset.tooltip = `${allEnabled ? 'Disable' : 'Enable'} every mock in the active Flow, including filtered rows.`;
+  const bulkSwitch = $('toggle-filtered-mocks');
+  bulkSwitch.disabled = busy || !visible.length;
+  bulkSwitch.textContent = `Enable filtered (${visible.length})`;
+  bulkSwitch.dataset.tooltip = `${visible.filter(item => item.rule.enabled).length} of ${visible.length} filtered mocks active. Open for Enable/Disable actions.`;
+  $('bulk-mock-menu').replaceChildren(...[[true, true], [false, true], [true, false], [false, false]].map(([enabled, filtered]) => {
+    const ids = new Set(filtered ? visibleRuleIds : rules.map(rule => rule.id));
+    return button('secondary bulk-mock-action', `${enabled ? 'Enable' : 'Disable'} ${filtered ? 'filtered' : 'all'} (${ids.size})`, () => { $('bulk-mock-menu').hidePopover(); void applyMockState(ids, enabled); });
+  }));
+  renderMockSummary();
   const compare = (a, b) => typeof a === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
   visible.sort((a, b) => ruleOrder.direction * compare(a[ruleOrder.column], b[ruleOrder.column]));
   $('rule-count').textContent = `(${visible.length} / ${rules.length})`;
@@ -726,8 +959,8 @@ function renderRule(item) {
   cell(button('rule-main', rule.name, () => editRule(rule), `Edit ${rule.name}`), 'record-name');
   const method = element('span', 'method-badge mono', rule.method === '*' ? 'ANY' : rule.method); method.dataset.method = rule.method;
   cell(method);
-  const base = cell('', 'request-url'); base.title = rule.url;
-  base.append(element('span', 'mono', baseUrlLabel(item.baseUrl) || 'Relative URL'), element('small', 'mono', item.ingress === '/' ? '' : item.ingress));
+  const base = cell('', 'request-url'); base.title = ruleUrls(rule, state.config).join('\n') || rule.url;
+  base.append(element('span', 'mono base-url-pill', baseUrlLabel(item.targets?.[0] ?? item.baseUrl) || 'Relative URL'), element('small', 'mono', item.ingress === '/' ? '' : item.ingress));
   const endpoint = cell(item.endpoint === '/' ? '' : item.endpoint, 'endpoint-name mono'); endpoint.title = rule.url;
   cell(element('span', 'type-badge', item.type));
   const status = element('span', 'request-code mono', item.status || 'Failed'); status.dataset.family = Math.floor(item.status / 100);
@@ -735,17 +968,14 @@ function renderRule(item) {
   cell(status);
   cell(item.delay, 'mono');
   const environmentCell = cell(item.environmentLabel, 'environment-cell'); environmentCell.setAttribute('aria-label', item.environmentLabel); environmentCell.title = `${item.environmentLabel} - ${rule.environmentScope ?? 'original'}: ${item.targets.join(', ')}`;
-  const label = element('label', 'check rule-switch');
-  const toggle = element('input'); toggle.type = 'checkbox'; toggle.setAttribute('role', 'switch'); toggle.checked = rule.enabled;
-  toggle.dataset.focus = `toggle-${rule.id}`; toggle.setAttribute('aria-label', `Enable ${rule.name}`);
-  toggle.addEventListener('change', async () => {
-    const enabled = toggle.checked; toggle.disabled = true;
-    const saved = await save(config => { activeScenario(config).rules.find(value => value.id === rule.id).enabled = enabled; });
-    if (!saved) toggle.checked = !enabled;
+  const toggle = button('rule-state-pill', rule.enabled ? 'Active' : 'Excluded', async () => {
+    toggle.disabled = true;
+    const saved = await save(config => setRuleState(activeScenario(config), rule.id, { enabled: !rule.enabled }));
     toggle.disabled = false; if (saved) restoreFocus(toggle.dataset.focus);
-  });
-  label.append(toggle, element('span', '', item.enabled));
-  const enabledCell = cell(label, 'record-last');
+  }, `Enable ${rule.name}`);
+  toggle.dataset.focus = `toggle-${rule.id}`;
+  toggle.setAttribute('aria-pressed', String(rule.enabled));
+  const enabledCell = cell(toggle, 'record-last');
   const remove = button('danger row-icon delete-icon record-delete', '', () => deleteRule(rule.id), `Delete ${rule.name}`);
   enabledCell.append(remove);
   row.addEventListener('click', event => { if (!event.target.closest('button, input, label, a')) editRule(rule); });
@@ -759,20 +989,29 @@ function restoreFocus(key) {
 }
 
 function update(next) {
+  if (next.applicationNotice && next.applicationNotice.origin !== appNoticeOrigin) {
+    appNoticeOrigin = next.applicationNotice.origin;
+    const notice = next.applicationNotice;
+    toast(`Opened ${notice.name} as a separate app.`, { key: 'application-follow', action: {
+      label: 'Existing app?', run: () => { if (state.applicationId === notice.applicationId) editApplication('merge'); }
+    } });
+  }
   const applicationChanged = state && (state.applicationId ?? 'default') !== (next.applicationId ?? state.applicationId ?? 'default');
   const changed = state?.revision !== next.revision;
   state = { ...state, ...next };
+  const conflict = next.activity?.find(row => row.outcome?.startsWith('Endpoint conflict:'));
+  if (conflict && String(conflict.time) !== $('rule-dialog').dataset.lastConflict) { $('rule-dialog').dataset.lastConflict = String(conflict.time); toast(conflict.outcome, { key: 'endpoint-conflict', error: true }); }
+  if (applicationChanged) { $('managed-app-name').replaceChildren(); $('rename-application').hidden = false; $('rename-environment').hidden = false; }
   renderConnection();
+  if (!ruleFilterApp || applicationChanged) restoreRuleFilters();
   if (changed) renderConfig();
   if (applicationChanged) {
     closeEnvironmentEditors(); selectedEnvironmentId = undefined; renderEnvironments();
-    ruleFilters.restore([]);
-    ruleInverted = false;
-    $('rules-request-query').value = '';
+    restoreRuleFilters();
     renderRules();
     for (const dialog of document.querySelectorAll('dialog[open]:not(#application-dialog, #manage-apps-dialog)')) dialog.close();
     closeScenarioEditor();
-    document.dispatchEvent(new Event('mockend-application-changed'));
+    document.dispatchEvent(new CustomEvent('mockend-application-changed', { detail: { automatic: next.automaticApplicationChange === true } }));
   }
 }
 
@@ -781,7 +1020,16 @@ async function refresh(force = false) {
   if (!refreshing) {
     const current = ++epoch;
     refreshing = request('state', { revision: state?.revision, activityVersion: state?.activityVersion })
-      .then(next => { if (!busy && current === epoch) update(next); })
+      .then(async next => {
+        const url = (next.connection?.available ?? next.connection?.active)?.url;
+        let origin; try { origin = new URL(url).origin; } catch { /* No HTTP site selected. */ }
+        if (!busy && current === epoch && next.followApplications && origin && /^https?:/.test(url) && origin !== followedOrigin) {
+          const selected = await request('application-follow', { url, revision: next.revision });
+          followedOrigin = origin;
+          next = { ...selected, automaticApplicationChange: true };
+        }
+        if (!busy && current === epoch) update(next);
+      })
       .finally(() => { refreshing = undefined; });
   }
   try {
@@ -904,16 +1152,16 @@ function showResponseFields() {
   for (const select of form.querySelectorAll('select')) select.title = select.selectedOptions[0]?.textContent ?? '';
   status.dataset.family = Number.isInteger(code) && code >= 100 ? Math.floor(code / 100) : '';
   const noBody = code < 200 || ['204', '205', '304'].includes(status.value) || field(form, 'method').value === 'HEAD';
-  $('status-field').hidden = !http;
+  $('status-field').hidden = false;
   $('response-status-toggle').disabled = !http;
   $('error-field').hidden = http;
-  $('body-field').hidden = !http || noBody;
+  $('body-field').hidden = !http || noBody || field(form, 'responseFormat').value === 'empty';
   const headersTab = $('rule-headers-tab');
   headersTab.disabled = !http;
   if (!http && headersTab.getAttribute('aria-selected') === 'true') selectRuleTab($('rule-response-tab'));
   status.required = http;
   status.disabled = !http;
-  $('body-label').textContent = kind === 'text' ? 'Response text' : 'Response JSON';
+  $('body-label').textContent = field(form, 'responseFormat').value === 'html' ? 'Response HTML' : kind === 'text' ? 'Response text' : 'Response JSON';
   field(form, 'body').required = http && kind === 'json' && !noBody;
   field(form, 'body').placeholder = $('body-label').textContent;
 }
@@ -926,9 +1174,12 @@ function shouldStartMocking(draft) {
 function editRule(rule, captured, tab, scenarioId = state?.config.activeScenarioId) {
   if (busy || !state) return;
   const form = $('rule-form');
-  ruleDraft = { id: rule?.id, revision: state.revision, captured: Boolean(captured), tab, scenarioId };
+  form.querySelector('.route-advanced').open = false;
+  ruleDraft = { id: rule?.id, revision: state.revision, captured: Boolean(captured), tab, scenarioId, baseOverrides: new Map(), baseOverrideEnvs: new Map() };
+  delete $('rule-base-fields').dataset.mapping;
   const startOnSave = shouldStartMocking(ruleDraft);
-  $('save-rule').textContent = startOnSave ? 'Save and start mocking' : 'Save rule';
+  setControlLabel($('save-rule'), startOnSave ? 'Save and start mocking' : 'Save rule');
+  if (rule) rule = effectiveRules(state.config.scenarios.find(item => item.id === scenarioId)).find(item => item.id === rule.id) ?? rule;
   rule ??= captured?.rule;
   if (captured) {
     const { kind, status, headers } = rule.response;
@@ -937,15 +1188,18 @@ function editRule(rule, captured, tab, scenarioId = state?.config.activeScenario
     ruleDraft.captureMime = headers['content-type'];
   }
   ruleDraft.site = rule?.site ?? (tab ? new URL(tab.url).hostname : captured || !rule ? currentSite() : '');
-  field(form, 'urlMode').value = rule?.endpointOnly ? 'endpoint' : rule?.exactUrl ? 'exact' : 'pattern';
-  fillRuleEnvs(rule);
+  field(form, 'urlMode').value = captured || !rule ? 'endpoint' : matchingMode(rule);
+  ruleDraft.currentMode = field(form, 'urlMode').value;
+  fillRuleEnvs(captured ? undefined : rule);
   const legacyBody = Object.hasOwn(rule ?? {}, 'requestBody') && rule.requestBodyMode !== 'exact';
   $('legacy-body-mode').hidden = !legacyBody;
   field(form, 'requestBodyMode').value = rule?.parameters?.length ? 'parameters'
     : legacyBody ? 'subset' : rule?.requestBodyMode ?? 'parameters';
-  $('rule-scenario-name').textContent = state.config.scenarios.find(item => item.id === scenarioId)?.name ?? '';
+  const editingFlow = state.config.scenarios.find(item => item.id === scenarioId);
+  $('rule-scenario-name').textContent = editingFlow.name + ' / ' + activeResponseScenario(editingFlow).name;
   $('rule-title').textContent = captured ? 'Mock response' : rule ? 'Edit rule' : 'Add rule';
   field(form, 'name').value = rule?.name ?? '';
+  field(form, 'enabled').checked = rule?.enabled ?? true;
   const method = rule?.method ?? 'GET';
   const picker = field(form, 'method');
   picker.querySelector('[data-existing-method]')?.remove();
@@ -963,7 +1217,14 @@ function editRule(rule, captured, tab, scenarioId = state?.config.activeScenario
   ruleDraft.sourceUrl = rule?.url;
   const source = rule?.url && /^https?:\/\//.test(rule.url) && !rule.url.split('://')[1].split('/')[0].includes('*') ? new URL(rule.url) : undefined;
   ruleDraft.baseUrl = source?.origin ?? (baseUrl ? new URL(baseUrl).origin : '');
-  field(form, 'url').value = source ? source.pathname + source.search : rule?.url ?? '/';
+  ruleDraft.baseUrl ||= (state.config.environments ?? []).find(env => ruleEnvironmentIds().includes(env.id))?.baseUrls[0] ?? state.config.environments?.[0]?.baseUrls[0] ?? '';
+  if (rule && !source) { try { ruleDraft.baseUrl = new URL(ruleUrls(rule, state.config)[0]).origin; } catch { /* Keep the app or selected Env fallback. */ } }
+  if (rule?.endpointOrigin) ruleDraft.baseUrl = rule.endpointOrigin;
+  ruleDraft.endpointOrigin = rule?.endpointOrigin ?? source?.origin ?? ruleDraft.baseUrl;
+  const initialUrl = source ? source.pathname + source.search : rule?.url ?? '/';
+  ruleDraft.endpointPath = rule?.endpointPath ?? (captured ? new URL(rule.url, 'https://mockend.invalid').pathname : undefined);
+  field(form, 'url').value = ruleDraft.currentMode === 'endpoint' ? endpointName(initialUrl) || '/' : ruleDraft.currentMode === 'exact' ? (source?.href ?? ruleUrls(rule, state.config)[0] ?? initialUrl) : initialUrl;
+  syncRouteMode(form);
   field(form, 'resource').value = ['XHR', 'Fetch'].includes(rule?.resource) ? 'api' : rule?.resource ?? 'api';
   field(form, 'requestBody').value = Object.hasOwn(rule ?? {}, 'requestBody') ? pretty(rule.requestBody) : '';
   field(form, 'parameterExample').value = field(form, 'requestBody').value;
@@ -981,6 +1242,10 @@ function editRule(rule, captured, tab, scenarioId = state?.config.activeScenario
   field(form, 'body').value = captured?.text ?? (Object.hasOwn(body ?? {}, 'body')
     ? (body.kind === 'text' ? body.body : pretty(body.body)) : '{\n  "ok": true\n}');
   field(form, 'headers').value = rule?.response.headers ? pretty(rule.response.headers) : '';
+  selectResponseFormat(form, responseFormat(rule?.response, field(form, 'body').value));
+  ruleDraft.responseTypeManual = Boolean(rule?.response.format) || Boolean(rule && !captured);
+  ruleDraft.originalMime = responseMime(rule?.response);
+  for (const strip of form.querySelectorAll('.choice-group')) mountButtonStrip(strip);
   field(form, 'cors').checked = rule?.response.cors ?? false;
   field(form, 'delayMs').value = rule?.response.delayMs ?? 0;
   field(form, 'error').value = rule?.response.error ?? 'InternetDisconnected';
@@ -1004,7 +1269,8 @@ function parseJson(text, label) {
 function parameterChoices(form, source) {
   if (source === 'query') {
     try {
-      const params = new URL(field(form, 'url').value).searchParams;
+      const raw = ['endpoint', 'path'].includes(field(form, 'urlMode').value) && ruleDraft.sourceUrl ? ruleDraft.sourceUrl : field(form, 'url').value;
+      const params = new URL(raw, ruleDraft.baseUrl || 'https://mockend.invalid').searchParams;
       return [...new Set(params.keys())].map(key => [key, params.get(key)]);
     }
     catch { return []; }
@@ -1161,7 +1427,6 @@ function addParameter(form, parameter = { source: parameterChoices(form, 'body')
     setExpected('');
     expected.dataset.string = 'false';
     updatePlaceholders();
-    if (source.value === 'body' && !field(form, 'parameterExample').value.trim()) $('parameter-example-panel').open = true;
   });
   key.addEventListener('change', () => {
     const option = parameterChoices(form, source.value).find(([name]) => name === key.value);
@@ -1174,7 +1439,7 @@ function addParameter(form, parameter = { source: parameterChoices(form, 'body')
     $('add-parameter').focus();
   }, 'Remove parameter');
   const grip = button('parameter-grip', '', () => {}, 'Reorder condition');
-  for (const [control, path] of [[grip, 'M6 9h12M6 15h12'], [remove, 'M6 6l12 12M18 6 6 18']]) {
+  for (const [control, path] of [[grip, 'M6 9h12M6 15h12'], [remove, 'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 10v7m4-7v7']]) {
     const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('aria-hidden', 'true');
     const shape = document.createElementNS(icon.namespaceURI, 'path'); shape.setAttribute('d', path);
@@ -1207,7 +1472,9 @@ function addParameter(form, parameter = { source: parameterChoices(form, 'body')
     moveParameter(draggedParameter, row, event.clientY < bounds.top + bounds.height / 2, form);
     draggedParameter = undefined;
   });
-  row.append(grip, join, source, picker, expected, remove);
+  const comparison = element('span', 'parameter-comparison', 'Equals');
+  comparison.setAttribute('aria-label', 'Comparison: Equals');
+  row.append(grip, join, source, picker, comparison, expected, remove);
   $('parameter-rows').append(row);
   updatePlaceholders();
   return key;
@@ -1249,12 +1516,19 @@ function syncRequestMatch(form) {
   const parameters = field(form, 'requestBodyMode').value === 'parameters';
   $('parameter-editor').hidden = !parameters;
   $('request-json-editor').hidden = parameters;
+  const exampleHost = parameters ? $('parameter-editor') : $('request-json-editor');
+  if ($('parameter-example-panel').parentElement !== exampleHost) {
+    if (parameters) exampleHost.insertBefore($('parameter-example-panel'), exampleHost.querySelector('.parameter-columns'));
+    else exampleHost.append($('parameter-example-panel'));
+  }
   if (!parameters) message('parameter-error');
+  syncRouteMode(form);
   syncRuleEnvironment(form);
   $('url-match-help').textContent = {
     pattern: 'Match the endpoint path with * wildcards. Env supplies the base URL.',
-    exact: 'Match the path and query values on the selected Env.',
-    endpoint: 'Match the endpoint path on the selected Env. Query filters are set in Request.'
+    exact: 'Match the complete URL and query. Env does not replace its origin.',
+    path: 'Match the complete path on the selected environments, ignoring the query.',
+    endpoint: 'Match the final path segment on the selected environments. Conflicting APIs are passed through with a warning.'
   }[field(form, 'urlMode').value];
 }
 
@@ -1264,11 +1538,11 @@ function validateRuleFields(form) {
   if (!draft) return;
   const method = field(form, 'method').value;
   const urlMode = value('urlMode');
-  const rule = { id: draft.id, name: value('name'), enabled: true, method, resource: value('resource') };
+  const rule = { id: draft.id, name: value('name'), enabled: field(form, 'enabled').checked, method, resource: value('resource') };
   if (draft.site) rule.site = draft.site;
-  if (urlMode === 'exact') rule.exactUrl = true;
-  if (urlMode === 'endpoint') rule.endpointOnly = true;
-  const scope = value('environmentScope');
+  rule.matchMode = urlMode;
+  if (urlMode === 'endpoint' && draft.endpointPath) rule.endpointPath = draft.endpointPath;
+  const scope = urlMode === 'exact' ? 'original' : value('environmentScope');
   if (scope !== 'original') rule.environmentScope = scope;
   if (scope === 'selected') rule.environmentIds = ruleEnvironmentIds();
   let valid = true;
@@ -1302,7 +1576,12 @@ function validateRuleFields(form) {
   report('name', rule.name ? '' : 'Enter a request name.');
   report('method', /^[!#$%&'*+.^_`|~0-9A-Z-]+$/.test(method) ? '' : 'Enter a valid HTTP method.');
   rule.url = check('url', () => {
-    const url = value('url');
+    const url = routeValue(form);
+    if (urlMode !== 'pattern' && url.includes('*')) throw new Error('Choose Pattern to use wildcards.');
+    if (urlMode === 'endpoint' && (/^https?:\/\//.test(value('url')) || value('url').startsWith('/'))) {
+      const source = new URL(value('url'), draft.baseUrl || 'https://mockend.invalid'); rule.endpointPath = source.pathname;
+      if (/^https?:\/\//.test(value('url'))) draft.endpointOrigin = source.origin;
+    }
     if (scope !== 'original' && /^\/(?!\/)/.test(url) && !/[\s#]/.test(url)) {
       if (urlMode === 'pattern' && url.includes('*')) return url;
       const parsed = new URL(url, 'https://mockend.invalid');
@@ -1316,6 +1595,8 @@ function validateRuleFields(form) {
     } catch { /* Show the URL error beside the field. */ }
     throw new Error(urlMode !== 'pattern' ? 'Enter a full HTTP(S) URL without credentials or a fragment.' : 'Enter an HTTP(S) URL or wildcard pattern.');
   });
+  if (urlMode === 'endpoint' && draft.endpointPath && rule.url) rule.endpointPath = new URL(rule.url, 'https://mockend.invalid').pathname;
+  if (urlMode === 'endpoint' && rule.endpointPath && draft.endpointOrigin) rule.endpointOrigin = draft.baseOverrides.get(draft.endpointOrigin) ?? draft.endpointOrigin;
   if (value('requestBodyMode') === 'parameters') {
     report('requestBody', '');
     try {
@@ -1348,7 +1629,12 @@ function validateRuleFields(form) {
       validateHeaders(parsed, 'Response headers');
       return parsed;
     });
-    rule.response = { kind, status, headers, delayMs, cors: field(form, 'cors').checked };
+    const format = value('responseFormat');
+    rule.response = { kind, format, status, headers, delayMs, cors: field(form, 'cors').checked };
+    const mime = { json: 'application/json; charset=utf-8', text: 'text/plain; charset=utf-8', html: 'text/html; charset=utf-8' }[format];
+    const mimeKey = Object.keys(headers ?? {}).find(name => name.toLowerCase() === 'content-type');
+    if (headers && mime && (!mimeKey || (headers[mimeKey] === draft.originalMime && !headers[mimeKey].toLowerCase().startsWith(mime.split(';')[0])))) headers[mimeKey ?? 'content-type'] = mime;
+    if (format === 'empty' && status >= 200 && ![204, 205, 304].includes(status) && method !== 'HEAD') rule.response.body = '';
     const statusText = value('statusText');
     report('statusText', statusText && !/^[\x20-\x7e]{1,100}$/.test(statusText) ? 'Use a status name of 1–100 printable ASCII characters.' : '');
     if (statusText && statusText !== HTTP_STATUSES[status]) rule.response.statusText = statusText;
@@ -1362,6 +1648,7 @@ function validateRuleFields(form) {
     } else report('body', '');
   }
   updateFieldError();
+  if (form.querySelector('.rule-origin-value[aria-invalid="true"]')) valid = false;
   $('save-rule').disabled = !valid || busy;
   return valid ? rule : undefined;
 }
@@ -1373,12 +1660,29 @@ async function submitRule(event) {
   const rule = validateRuleFields(form);
   if (!rule || busy) return;
   rule.id ??= makeId();
+  const conflictConfig = structuredClone(state.config); applyBaseOverrides(conflictConfig);
+  if (!conflictConfig.environments?.length && draft.baseUrl && rule.url.startsWith('/')) {
+    mapRuleEnvironment(conflictConfig, { url: draft.baseUrl + rule.url });
+    for (const origin of readCapturedOrigins()) mapRuleEnvironment(conflictConfig, { url: origin + '/' });
+  }
+  const conflicts = endpointConflicts(rule, conflictConfig, readCapturedRoutes());
+  if (conflicts.length) {
+    const needsOrigin = new Set(conflicts.map(url => new URL(url).pathname)).size === 1;
+    const narrowMode = needsOrigin ? 'exact' : 'path';
+    const action = needsOrigin ? 'Use Exact URL' : 'Use Full path';
+    if (await confirmAction('Endpoint conflict', `These APIs share an endpoint: ${conflicts.join(', ')}. ${action} to avoid mocking unrelated requests.`, action)) {
+      field(form, 'urlMode').value = narrowMode; field(form, 'url').value = needsOrigin ? (rule.endpointOrigin ? rule.endpointOrigin + (rule.endpointPath ?? rule.url) : conflicts[0]) : rule.endpointPath ?? rule.url; ruleDraft.currentMode = narrowMode; syncRequestMatch(form); validateRuleFields(form);
+    }
+    return;
+  }
+
   $('save-rule').disabled = true;
   try {
     const saved = await save(config => {
       const targetId = rule.environmentScope === 'selected' ? rule.environmentIds[0] : config.settings.environmentId;
       const target = targetId ? { ...config, settings: { ...config.settings, environmentId: targetId } } : config;
       if (draft.sourceUrl && /^https?:\/\//.test(draft.sourceUrl)) mapRuleEnvironment(target, { url: draft.sourceUrl });
+      applyBaseOverrides(config);
       if (rule.url.startsWith('/')) {
         if (!config.environments?.length && draft.baseUrl) mapRuleEnvironment(config, { url: draft.baseUrl + rule.url });
       } else mapRuleEnvironment(target, rule);
@@ -1386,7 +1690,12 @@ async function submitRule(event) {
       const index = rules.findIndex(item => item.id === rule.id);
       if (index < 0 && draft.captured) rules.unshift(rule);
       else if (index < 0) rules.push(rule);
-      else rules[index] = { ...rule, enabled: rules[index].enabled };
+      else {
+        const flow = config.scenarios.find(item => item.id === draft.scenarioId);
+        const original = rules[index];
+        rules[index] = { ...rule, response: original.response, enabled: original.enabled };
+        setRuleState(flow, rule.id, { response: rule.response, enabled: rule.enabled });
+      }
     }, 'rule-error', draft.revision);
     if (saved) {
       $('rule-dialog').close();
@@ -1443,7 +1752,7 @@ async function submitScenario(event) {
     else {
       const id = makeId();
       const rules = draft.mode === 'duplicate' ? original.rules : draft.rules ?? [];
-      config.scenarios.push({ id, name, rules });
+      config.scenarios.push({ ...(draft.mode === 'duplicate' ? original : {}), id, name, rules });
       config.activeScenarioId = id;
     }
   }, 'scenario-error', draft.revision)) {
@@ -1528,7 +1837,7 @@ $('clear-rules').addEventListener('click', async () => {
   if (!flow.rules.length || !await confirmAction(
     'Clear all rules?', `Are you sure you want to clear all rules in “${flow.name}”?`, 'Clear rules'
   )) return;
-  if (await save(config => { activeScenario(config).rules = []; }, 'feedback', revision)) {
+  if (await save(config => { const flow = activeScenario(config); flow.rules = []; pruneResponseScenarios(flow); }, 'feedback', revision)) {
     message('feedback', 'Rules cleared.');
   }
 });
@@ -1554,16 +1863,34 @@ ruleDialog.addEventListener('close', () => {
 });
 window.addEventListener('resize', updateFieldError);
 
+for (const [id, path] of [['rule-response-tab', 'm8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 16'], ['rule-request-tab', 'M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4'], ['rule-headers-tab', 'M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h6v6h-6v-6Z']]) {
+  const control = $(id); const text = element('span', 'tab-label', control.textContent);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+  const icon = document.createElementNS(svg.namespaceURI, 'path'); icon.setAttribute('d', path); svg.append(icon); control.replaceChildren(svg, text);
+}
 const ruleForm = $('rule-form');
+$('rule-path').addEventListener('input', () => {
+  if (!ruleDraft || field(ruleForm, 'urlMode').value !== 'endpoint') return;
+  const prefix = $('rule-path').value.trim().replace(/\/$/, '');
+  const endpoint = field(ruleForm, 'url').value.replace(/^\//, '');
+  ruleDraft.endpointPath = (prefix.startsWith('/') ? prefix : '/' + prefix) + '/' + endpoint;
+  if (!prefix) ruleDraft.endpointPath = '/' + endpoint;
+  syncRequestMatch(ruleForm); validateRuleFields(ruleForm);
+});
 const setHttpStatus = mountHttpStatusPicker($('response-status-toggle'), $('http-status-menu'), field(ruleForm, 'status'), field(ruleForm, 'statusText'), () => {
   showResponseFields(); validateRuleFields(ruleForm);
 });
-$('edit-rule-name').addEventListener('click', () => { $('rule-name').focus(); $('rule-name').select(); });
 for (const resource of RESOURCE_TYPES.filter(type => type !== 'XHR' && type !== 'Fetch')) {
   field(ruleForm, 'resource').append(new Option(resource, resource));
 }
 const jsonEditors = ['requestBody', 'parameterExample', 'body', 'headers'].map(name =>
-  mountJsonEditor(field(ruleForm, name), () => name !== 'body' || field(ruleForm, 'kind').value === 'json'));
+  mountJsonEditor(field(ruleForm, name), () => {
+    if (name !== 'body' || field(ruleForm, 'kind').value === 'json') return 'json';
+    let mime = ''; try { mime = Object.entries(JSON.parse(field(ruleForm, 'headers').value)).find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? ''; } catch { /* Invalid headers remain editable. */ }
+    if (/xml/i.test(mime) || /^\s*<\?xml/.test(field(ruleForm, 'body').value)) return 'xml';
+    if (/text\/css/i.test(mime)) return 'css';
+    return field(ruleForm, 'responseFormat').value === 'html' ? 'html' : 'text';
+  }, { write: copyToClipboard }));
 function refreshJsonEditors(auto = false) {
   for (const refreshEditor of jsonEditors) refreshEditor(auto);
 }
@@ -1571,21 +1898,33 @@ field(ruleForm, 'method').append(
   ...HTTP_METHODS.filter(method => method !== '*').map(method => new Option(method))
 );
 for (const error of NETWORK_ERRORS) $('rule-form').elements.error.append(new Option(error.replace(/([a-z])([A-Z])/g, '$1 $2'), error));
-ruleForm.addEventListener('input', event => {
-  const parameterRow = event.target.closest('.parameter-row');
-  if (event.target.matches('.parameter-picker input') && parameterRow?.querySelector('select[aria-label="Parameter source"]').value === 'query' && parameterRow.querySelector('input').value &&
-      (field(ruleForm, 'urlMode').value === 'exact' || !field(ruleForm, 'url').value.includes('*'))) {
-    field(ruleForm, 'urlMode').value = 'endpoint';
+$('rule-url').addEventListener('blur', () => {
+  if (!ruleDraft) return;
+  const input = field(ruleForm, 'url'); const mode = field(ruleForm, 'urlMode').value;
+  if (!['endpoint', 'path'].includes(mode) || input.value.includes('*')) return;
+  try {
+    const path = routeValue(ruleForm);
+    if (mode === 'endpoint') { ruleDraft.endpointPath = path; input.value = endpointName(path) || '/'; }
+    else input.value = path;
+    syncRequestMatch(ruleForm); validateRuleFields(ruleForm);
+  } catch { /* Preserve incomplete text for normal field validation. */ }
+});
+$('response-format').addEventListener('click', event => {
+  const choice = event.target.closest('label')?.querySelector('input') ?? (event.target.matches('input') ? event.target : undefined);
+  if (!choice || !ruleDraft) return;
+  ruleDraft.responseTypeManual = true;
+  selectResponseFormat(ruleForm, choice.value); showResponseFields(); refreshJsonEditors(); validateRuleFields(ruleForm);
+});
+$('response-format').addEventListener('keydown', event => { if (event.key === ' ' && ruleDraft) ruleDraft.responseTypeManual = true; });
+function onRuleInput(event) {
+  if (event.target.name === 'responseFormat') {
+    ruleDraft.responseTypeManual = true; selectResponseFormat(ruleForm, event.target.value); refreshJsonEditors();
+  } else if (event.target.name === 'body' && !ruleDraft.responseTypeManual) {
+    selectResponseFormat(ruleForm, responseFormat(undefined, event.target.value)); refreshJsonEditors();
   }
   syncRequestMatch(ruleForm);
-  if (event.target.name === 'parameterExample' && parameterChoices(ruleForm, 'body').length) {
-    for (const row of $('parameter-rows').children) {
-      const source = row.querySelector('select[aria-label="Parameter source"]');
-      if (source.value !== 'query' || row.querySelector('.parameter-picker input').value) continue;
-      source.value = 'body';
-      source.dispatchEvent(new Event('change'));
-    }
-  }
+  if (event.target.name === 'parameterExample') previewExampleConditions();
+  if (event.target.name === 'kind') { selectResponseFormat(ruleForm, event.target.value); ruleDraft.responseTypeManual = true; }
   if (event.target.name === 'kind' && ruleDraft?.captureMime &&
       ruleDraft.captureKind === 'text' && event.target.value === 'json') {
     const headers = field(ruleForm, 'headers');
@@ -1598,8 +1937,52 @@ ruleForm.addEventListener('input', event => {
     } catch { /* Leave custom or invalid headers for the editor to validate. */ }
   }
   showResponseFields();
-  if (event.target.name === 'kind') refreshJsonEditors();
+  if (['kind', 'responseFormat', 'headers'].includes(event.target.name)) refreshJsonEditors();
   validateRuleFields(ruleForm);
+}
+ruleForm.addEventListener('input', onRuleInput);
+document.addEventListener('input', event => { if (event.target.form === ruleForm && !ruleForm.contains(event.target)) onRuleInput(event); });
+function previewExampleConditions() {
+  try {
+    if (field(ruleForm, 'requestBodyMode').value === 'exact') {
+      JSON.parse(field(ruleForm, 'parameterExample').value);
+      $('example-condition-preview').textContent = 'Valid JSON. Done applies it to Exact JSON matching.';
+      $('apply-parameter-example').disabled = false; return;
+    }
+    const count = parametersFromExample(field(ruleForm, 'parameterExample').value).length;
+    $('example-condition-preview').textContent = `${count} condition${count === 1 ? '' : 's'} generated automatically`;
+    $('apply-parameter-example').disabled = false;
+  } catch {
+    $('example-condition-preview').textContent = 'Paste valid JSON with up to 30 fields.';
+    $('apply-parameter-example').disabled = true;
+  }
+}
+function openExampleJson() {
+  $('parameter-example-panel').open = true;
+  previewExampleConditions(); refreshJsonEditors();
+  field(ruleForm, 'parameterExample').focus();
+}
+$('paste-parameter-example').addEventListener('click', openExampleJson);
+$('paste-exact-example').addEventListener('click', openExampleJson);
+$('apply-parameter-example').addEventListener('click', () => {
+  try {
+    if (field(ruleForm, 'requestBodyMode').value === 'exact') {
+      JSON.parse(field(ruleForm, 'parameterExample').value);
+      field(ruleForm, 'requestBody').value = field(ruleForm, 'parameterExample').value;
+      $('parameter-example-panel').open = false; refreshJsonEditors(); validateRuleFields(ruleForm); $('paste-exact-example').focus(); return;
+    }
+    const generated = parametersFromExample(field(ruleForm, 'parameterExample').value);
+    const existing = [...$('parameter-rows').children];
+    const filled = existing.filter(row => [...row.querySelectorAll('input')].some(input => input.value));
+    const bodyKeys = new Set(filled.filter(row => row.querySelector('[aria-label="Parameter source"]').value === 'body').map(row => '/' + row.querySelector('input').value.replace(/^\//, '')));
+    const additions = generated.filter(parameter => !bodyKeys.has(parameter.key));
+    if (filled.length + additions.length > 30) throw new Error('Keep at most 30 matching conditions. Existing conditions were preserved.');
+    for (const row of existing) if (!filled.includes(row)) row.remove();
+    for (const parameter of additions) addParameter(ruleForm, parameter);
+    $('parameter-example-panel').open = false;
+    validateRuleFields(ruleForm);
+    $('paste-parameter-example').focus();
+  } catch (error) { toast(error.message, { key: 'parameter-example-error', error: true }); }
 });
 $('add-parameter').addEventListener('click', () => {
   if ($('parameter-rows').childElementCount >= 30) return;
@@ -1614,7 +1997,7 @@ const scenarioPicker = $('scenario');
 function measureFlowControls() {
   const tools = document.querySelector('.scenario-tools');
   const scale = Number(getComputedStyle(document.body).zoom) || 1;
-  const maximum = Math.max(80, Math.min((innerWidth - 16) / scale, tools.clientWidth - $('new-scenario').offsetWidth - document.querySelector('.transfer-controls').offsetWidth - 12));
+  const maximum = Math.max(80, Math.min((innerWidth - 16) / scale, ($('scenario-toolbar').clientWidth || tools.clientWidth) - $('new-scenario').offsetWidth - document.querySelector('.transfer-controls').offsetWidth - 12));
   const width = measureTrayWidth(scenarioMenu, maximum);
   scenarioPicker.style.width = `${width}px`;
   scenarioMenu.style.width = `${width}px`;
@@ -1647,6 +2030,7 @@ async function deleteRule(id) {
   await save(config => {
     const flow = activeScenario(config);
     flow.rules = flow.rules.filter(rule => rule.id !== id);
+    pruneResponseScenarios(flow);
   }, 'feedback', revision);
 }
 
@@ -1720,7 +2104,7 @@ $('copy-scenarios').addEventListener('click', async () => {
 });
 const pasteDialog = $('paste-rules-dialog');
 const pastedRules = $('pasted-rules-json');
-mountJsonEditor(pastedRules, () => true, { formatOnInput: false });
+mountJsonEditor(pastedRules, () => true, { formatOnInput: false, write: copyToClipboard });
 $('paste-rules').addEventListener('click', () => {
   pastedRules.value = '';
   pastedRules.dispatchEvent(new Event('input'));
@@ -1768,6 +2152,7 @@ new ResizeObserver(() => { if (scenarioPicker.getClientRects().length) measureFl
 const tooltip = element('div', 'styled-tooltip');
 tooltip.setAttribute('popover', 'manual');
 tooltip.setAttribute('role', 'tooltip');
+tooltip.setAttribute('aria-hidden', 'true');
 document.body.append(tooltip);
 let tooltipAnchor;
 let tooltipTimer;
@@ -1813,7 +2198,19 @@ document.addEventListener('focusin', event => { if (event.target.matches(':focus
 document.addEventListener('focusout', event => { if (tooltipAnchor === event.target) closeTooltip(); });
 document.addEventListener('beforetoggle', event => { if (event.newState === 'open' && event.target !== tooltip) closeTooltip(); }, true);
 document.addEventListener('pointerdown', closeTooltip);
-document.addEventListener('scroll', closeTooltip, true);
+let tooltipPoint;
+let tooltipFrame;
+document.addEventListener('pointermove', event => {
+  tooltipPoint = event.pointerType === 'touch' ? undefined : { x: event.clientX, y: event.clientY };
+});
+document.addEventListener('scroll', () => {
+  closeTooltip();
+  cancelAnimationFrame(tooltipFrame);
+  tooltipFrame = requestAnimationFrame(() => {
+    const hovered = tooltipPoint && document.elementFromPoint(tooltipPoint.x, tooltipPoint.y);
+    if (hovered?.matches(':hover')) queueTooltip(hovered);
+  });
+}, true);
 document.addEventListener('keydown', event => {
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
   const adjustment = ({ '+': 10, '=': 10, '-': -10, '_': -10, '0': 0 })[event.key];
@@ -1944,9 +2341,18 @@ if (browser) {
   }, () => refresh(true).catch(() => {}), ({ rules, skipped }, site) =>
     openScenarioDraft(site ? `${new URL(site).hostname} mocks` : 'Recorded API mocks', rules, skipped), {
     connectRecording, saveFile, copyToClipboard, autoRecord: browser, readAppUrl: () => $('app-url').value,
-    readApplicationId: () => state?.applicationId ?? 'default'
+    readApplicationId: url => {
+      const id = state?.applicationId ?? 'default';
+      if (!url || !state?.followApplications) return id;
+      const app = state.applications.find(app => app.id === id);
+      try {
+        const origin = new URL(url).origin;
+        return app?.origins?.includes(origin) || (app?.url && new URL(app.url).origin === origin) ? id : undefined;
+      } catch { return undefined; }
+    }
   });
   readCapturedOrigins = requestPanel.apiOrigins;
+  readCapturedRoutes = requestPanel.apiRoutes;
 }
 mountSplitButtons();
 await refresh();

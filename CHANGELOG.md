@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.0.10
+
+- Adapt Record and Mocking to compact square icon buttons in narrow headers, retaining accessible names, state dots, and start/stop actions. Keep labeled switches in wide headers and larger touch targets on touch devices.
+
+## 0.0.9
+
+- Use a black dark-mode background and neutral charcoal surfaces instead of brown-tinted dark colors.
+- Give Record the same switch, button geometry, and state feedback as Mocking, with a red recording indicator.
+- Acknowledge repeated Chrome recording starts so the control cannot remain pending; report recording failures through toasts. Verify real capture pause/resume independently of mocking.
+
+## 0.0.8
+
+- Add response scenarios within each Flow, sharing matching rules with sparse response and enabled-state overrides. Preserve legacy backups, Env independence, rule priority, and active-scenario portable exports.
+- Refine Record/Mocking controls, domain-and-path table cells, individual Active/Excluded pills, and explicit filtered/all bulk actions.
+- Align the rule header and responsive routing fields; reuse equal-width tabs and preserve advanced matching modes.
+- Extend the shared code editor with safe JSON/HTML/XML/CSS formatting, Copy/Expand, stable heights, and separate Parameters/Exact JSON example workflows.
+- Restore the original palette and add a direct theme toggle that swaps primary and secondary roles.
+
+## 0.0.7
+
+- Follow the current site's origin: select its known app or create an isolated profile for a new site, with an Existing app? toast action to merge profiles. Retain merged launch origins in backups.
+- Keep captures isolated while site/profile changes are queued, and retain a running browser when assigning a known site.
+- Add a persisted System/Light/Dark appearance setting, using the existing palette with reversed lightness across surfaces, badges, editors, and native controls.
+- Restrict table hover shading to the current pointer row. Keep dropdown values and options on one line with ellipses, and reveal clipped labels with the shared hover/keyboard tooltip.
+- Give HTTP status options fixed, non-overlapping rows; restore truncated-label tooltips after scrolling a tray.
+
+## 0.0.6
+
+- Reuse tick/cross split actions for inline name and URL entry while retaining text Cancel/Save actions in popups; support Enter/Esc without interrupting IME composition or multiline editing.
+- Keep domain text and record alignment stable during editing, restore filled input backgrounds, and unify form title typography.
+- Place the rule name beside the popup heading and Flow name; arrange Method, Base URL, Endpoint, Env, and Match in a responsive grid with only the relevant Base URL visible.
+- Keep Response Type, HTTP Status, and Delay in fixed grid slots across response formats, including network errors.
+
+## 0.0.5
+
+- Default new mock editors to Endpoint, dynamically label URL input, and retain explicit Full path, Exact URL, and Pattern matching without altering legacy stored rules.
+- Warn on ambiguous endpoints within an Env and pass conflicting requests through; retain guards in portable mock exports and allow different path prefixes across Envs.
+- Resolve editable base URLs from Envs, move request type overrides into Request, and detect JSON/Text/HTML/Empty responses with the existing segmented component and manual overrides.
+- Put the filtered-only bulk switch in the Enabled column header; clearing filters never changes other rules.
+- Move app actions beside the heading, use straight edit underlines, vertically center table records, and render independent split dividers hidden beside selected segments.
+
+## 0.0.4
+
+- Keep Save actions reachable by keyboard during inline app and Env renaming and URL edits; add URL drafts directly in the table.
+- Show the active Flow in a page-local mocking indicator that updates when switching Flows, survives navigation, and disappears when mocking stops. Browser-owned debugger warnings remain unchanged.
+- Preserve per-app Rules filters and existing request filter preferences; leave file-extension endpoints unchecked by default while retaining explicit user selections.
+- Reserve filter count and chip space to keep tray headings stable; hide the divider immediately after selected split segments.
+- Use a dark resize cursor, stop cursors for disabled controls, top-aligned table records, and a labeled content-sized response-type selector.
+
+## 0.0.3
+
+- Join split controls without gaps, clip hover feedback to the outer container, and keep dividers thin light black in every state.
+- Center sort arrows, reuse column resizing for Env URLs, use pencil-only rename actions, and show bottom-border input focus.
+
+- Rework Add/Edit Rule with labeled route controls, individual Env base URL fields, and the shared segmented tabs.
+- Generate up to 30 typed equality conditions from pasted request JSON, preserving existing conditions.
+- Keep condition fields and expected values readable on narrow Chrome and VS Code panels.
+- Balance table header padding and thin separators; show the selected Settings Env in black.
+
 ## 0.0.2
 
 - Clear all captured requests, including hidden and filtered records; keep Clear all available when no rows match, and explain the rolling 150-request limit in the count tooltip.

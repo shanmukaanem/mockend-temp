@@ -1,5 +1,5 @@
 import { emptyConfig, validateConfig } from './config.mjs';
-import { readApplications, mergeApplications, splitApplication } from './applications.mjs';
+import { readApplications, mergeApplications, splitApplication, followApplication } from './applications.mjs';
 import { mapConfigEnvironments } from './environment-rules.mjs';
 
 export const STORAGE_KEY = 'mockroute.configuration.v1';
@@ -83,10 +83,12 @@ export class Controller {
         await this.storage.set(STORAGE_KEY, readApplications(workspace));
         this.workspace = workspace;
         this.config = config;
+        await this.platform.refresh?.();
         this.configRevision = crypto.randomUUID();
         this.message = '';
         break;
       }
+      case 'application-follow':
       case 'application-create':
       case 'application-select':
       case 'application-merge':
@@ -96,31 +98,43 @@ export class Controller {
         if (data.revision !== this.configRevision) throw new Error('Apps changed in another panel. Refresh before switching.');
         const workspace = action === 'applications-import' ? readApplications(data.workspace) : structuredClone(this.workspace);
         const previous = workspace.applications.find(app => app.id === workspace.activeApplicationId);
-        if (data.currentUrl) {
+        const followed = action === 'application-follow' ? followApplication(workspace, data.url) : undefined;
+        if (followed && !followed.changed) break;
+        if (data.currentUrl && action !== 'application-follow') {
           const current = new URL(data.currentUrl);
           const address = current.origin + current.pathname;
           previous.url = address.length <= 2048 ? address : current.origin;
         }
         if (action === 'application-create') {
-          const app = { id: crypto.randomUUID(), name: data.name, ...(data.url && { url: data.url }), config: emptyConfig() };
+          const url = data.url || (data.currentUrl ? previous.url : undefined);
+          const app = { id: crypto.randomUUID(), name: data.name, ...(url && { url }), config: emptyConfig() };
           workspace.applications.push(app);
           workspace.activeApplicationId = app.id;
         } else if (action === 'application-merge') mergeApplications(workspace, previous.id, data.id);
         else if (action === 'application-split') splitApplication(workspace, data);
         else if (action === 'application-rename') previous.name = data.name;
-        else if (action === 'application-select') workspace.activeApplicationId = data.id;
+        else if (action === 'application-select') {
+          workspace.activeApplicationId = data.id;
+          const selected = workspace.applications.find(app => app.id === data.id);
+          if (selected && !selected.url && data.currentUrl) selected.url = previous.url;
+        }
         const validated = readApplications(workspace);
-        if (action !== 'application-rename') await this.platform.stop();
+        const switching = action !== 'application-rename' && (action !== 'application-follow' || validated.activeApplicationId !== previous.id);
+        if (switching) {
+          if (action === 'application-follow' && this.platform.stopMocking) await this.platform.stopMocking();
+          else await this.platform.stop();
+        }
         await this.storage.set(STORAGE_KEY, validated);
         this.workspace = validated;
         this.config = validated.applications.find(app => app.id === validated.activeApplicationId).config;
         this.configRevision = crypto.randomUUID();
-        if (action !== 'application-rename') {
+        if (switching) {
           await this.activityWrite;
           this.activity = [];
           await this.loadActivity();
           this.activitySession = crypto.randomUUID();
         }
+        this.applicationNotice = followed?.created ? { applicationId: validated.activeApplicationId, name: followed.name, origin: followed.origin } : undefined;
         this.message = '';
         break;
       }
@@ -155,8 +169,9 @@ export class Controller {
     const version = `${this.activitySession}:${this.activityCount}`;
     return {
       revision: this.configRevision, connection, message: this.message, activityVersion: version,
+      followApplications: true, applicationNotice: this.applicationNotice ?? null,
       applicationId: this.workspace.activeApplicationId,
-      applications: this.workspace.applications.map(({ id, name, url }) => ({ id, name, ...(url && { url }) })),
+      applications: this.workspace.applications.map(({ id, name, url, origins }) => ({ id, name, ...(url && { url }), ...(origins?.length && { origins }) })),
       ...(revision === this.configRevision ? {} : { config: this.config }),
       ...(activityVersion === version ? {} : { activity: this.activity })
     };

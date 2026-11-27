@@ -1,3 +1,4 @@
+import { mountButtonStrip } from '../ui/split-buttons.mjs';
 import { mountOptionSearch } from '../ui/option-search.mjs';
 import { baseUrlLabel } from '../ui/url-label.mjs';
 import { measureTrayWidth } from '../ui/tray-size.mjs';
@@ -49,7 +50,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   const rows = byId('request-rows');
   const fitColumns = mountTableColumns(rows.closest('table'), 'mockend.columns.requests.v4', [
     { min: 40, max: 56 }, { min: 56, max: 140, width: 76 },
-    { min: 96, max: 420, width: 160, lines: 'span, small' }, { min: 48, max: 500, lines: '.endpoint-label', grow: 1 },
+    { min: 112, max: 560, width: 220, lines: 'span, small' }, { min: 48, max: 500, lines: '.endpoint-label', grow: 1 },
     { min: 60, max: 180, width: 84 }, { min: 72, max: 180, width: 88 }
   ]);
   const status = byId('capture-status');
@@ -87,6 +88,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   let restoring = false;
   let lastView;
   let fallbackId = 0;
+  let siteSequence = 0;
   let work = Promise.resolve();
   let readyStore;
   const cache = openRequestStore().then(store => { readyStore = store; return store; }).catch(() => null);
@@ -297,13 +299,14 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
     urlCell.className = 'request-url';
     urlCell.title = url;
     const path = document.createElement('span');
-    path.className = 'mono';
+    path.className = 'mono base-url-pill';
     path.textContent = baseUrlLabel(parts.baseUrl);
     const domain = document.createElement('small');
     domain.textContent = parts.ingress === '/' ? '' : parts.ingress;
     const inspect = document.createElement('button');
     inspect.type = 'button';
     inspect.className = 'request-inspect';
+    inspect.dataset.tooltip = url;
     inspect.setAttribute('aria-label', `View ${verb} ${endpoint.pathname}`);
     inspect.append(path, domain);
     row.addEventListener('click', event => {
@@ -357,6 +360,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
     const controls = document.createElement('div');
     controls.className = 'request-row-actions';
     controls.append(curl, button);
+    mountButtonStrip(controls, { surface: false });
     codeCell.append(badge);
     codeCell.append(controls);
     row.addEventListener('contextmenu', event => {
@@ -626,6 +630,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
     recording = status !== 'stopped';
     recordingState.textContent = message || ({ recording: 'Recording active tab', waiting: 'Waiting for an app tab', stopped: 'Recording paused' })[status];
     recordToggle.dataset.state = status;
+    recordToggle.setAttribute('aria-pressed', String(recording));
     recordToggle.title = recordingState.textContent;
     setControlLabel(recordToggle, recording ? 'Stop recording' : 'Start recording');
     recordToggle.disabled = false;
@@ -723,11 +728,11 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   async function connect() {
     port = await connectRecording(message => {
       if (message.type === 'request') {
-        const capturedApplication = applicationId;
+        const capturedSite = siteSequence;
         const entry = message.row;
         const body = readBody(entry);
         enqueue(async () => {
-          if (!origin || capturedApplication !== readApplicationId()) return;
+          if (!origin || capturedSite !== siteSequence || applicationId !== readApplicationId(recordedTab?.url)) return;
           const store = await cache;
           const id = store ? await store.add(storageSite(origin), entry) : ++fallbackId;
           addRequest(entry, id);
@@ -735,10 +740,11 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
           void body.then(data => data.length && store?.body(id, data)).catch(error => showStatus(error.message, true));
         });
       } else if (message.type === 'reset' || message.type === 'site') {
-        enqueue(() => switchContext(message.tab));
-        void refreshConnection();
+        siteSequence++;
+        enqueue(async () => { await refreshConnection(); await switchContext(message.tab); });
       } else if (message.type === 'status') {
         setRecordingStatus(message.status, message.message);
+        if (message.status === 'stopped' && message.message) showStatus(message.message, true);
       } else if (message.type === 'body') {
         pending.get(message.token)?.(message.body);
       }
@@ -750,8 +756,8 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   }
 
   async function start() {
-    if (!port) await connect();
     recordToggle.disabled = true;
+    if (!port) await connect();
     recordingState.textContent = 'Starting recording…';
     recordToggle.title = recordingState.textContent;
     recordToggle.dataset.state = 'starting';
@@ -767,8 +773,9 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
       void begin();
     }
   });
-  document.addEventListener('mockend-application-changed', () => {
-    if (port && recording) void Promise.resolve(port.postMessage({ type: 'stop' })).catch(error => showStatus(error.message, true));
+  document.addEventListener('mockend-application-changed', event => {
+    if (!event.detail?.automatic) siteSequence++;
+    if (!event.detail?.automatic && port && recording) void Promise.resolve(port.postMessage({ type: 'stop' })).catch(error => showStatus(error.message, true));
     enqueue(() => switchContext(recordedTab));
   });
   async function begin() {
@@ -784,7 +791,7 @@ export function mountRequests(openEditor, chooseView, openMockRule, refreshConne
   if (autoRecord) void begin();
   else void connect().then(() => port.postMessage({ type: 'sync' }))
     .catch(error => setRecordingStatus('stopped', error.message));
-  return { apiOrigins: () => readApplicationId() !== applicationId ? []
+  return { apiRoutes: () => readApplicationId() !== applicationId ? [] : captures.filter(item => item.type === 'Fetch/XHR').map(item => ({ url: item.entry.request.url, method: item.entry.request.method })), apiOrigins: () => readApplicationId() !== applicationId ? []
     : [...new Set(captures.filter(item => item.type === 'Fetch/XHR' && /^https?:\/\//.test(item.endpoint.origin)).map(item => item.endpoint.origin))] };
 
 }

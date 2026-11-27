@@ -7,6 +7,9 @@ const paths = {
   requests: 'M3 4h3v3H3V4Zm6 1.5h12M3 10.5h3v3H3v-3Zm6 1.5h12M3 17h3v3H3v-3Zm6 1.5h12',
   filtered: 'M3 4h18l-7 8v7l-4 2v-9L3 4Z',
   check: 'm5 12 4 4L19 6',
+  close: 'm6 6 12 12M6 18 18 6',
+  merge: 'M5 4v4c0 4 7 4 7 8v4m-4-4 4 4 4-4M19 4v4c0 4-7 4-7 8',
+  split: 'M12 20v-4c0-4-7-4-7-8V4m-3 3 3-3 3 3m4 9c0-4 7-4 7-8V4m-3 3 3-3 3 3',
   edit: 'M4 16v4h4L20 8l-4-4L4 16Zm10-10 4 4',
   bulk: 'm3 7 3 3 5-6m2 3h8M3 16l3 3 5-6m2 3h8',
   invert: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z',
@@ -17,7 +20,7 @@ const paths = {
 /** Update a responsive button without replacing its icon or accessible name. */
 export function setControlLabel(control, text) {
   const label = control.querySelector('.control-label')
-  if (label) label.textContent = text
+  if (label) label.textContent = control.id === 'record-toggle' ? 'Record' : control.id === 'toggle' ? 'Mocking' : text
   else control.textContent = text
   control.setAttribute('aria-label', text)
   control.title = text
@@ -29,8 +32,9 @@ export function mountCompactControls() {
   const controls = {
     'record-toggle': 'record', toggle: 'mock', 'clear-requests': 'clear', 'clear-rules': 'clear',
     'filter-toggle': 'filter', 'rules-filter-toggle': 'filter', 'mock-scenario': 'add',
-    'activate-environment': 'check', 'rename-environment': 'edit', 'delete-environment': 'clear',
-    'add-rule': 'add', 'toggle-all-mocks': 'bulk', 'toggle-filtered-mocks': 'filtered',
+    'save-environment-url': 'check', 'cancel-environment-url': 'close',
+    'activate-environment': 'check', 'rename-environment': 'edit', 'rename-application': 'edit', 'merge-application': 'merge', 'split-application': 'split', 'delete-environment': 'clear',
+    'add-rule': 'add',
     'invert-results': 'invert', 'rules-invert-results': 'invert',
     'open-tab': null, 'new-scenario': null, 'export-postman': null, 'copy-postman': null
   }
@@ -59,7 +63,14 @@ export function mountCompactControls() {
       }
     }
     control.prepend(svg, label)
+    if (id === 'record-toggle' || id === 'toggle') {
+      svg?.classList.add('activity-control-icon')
+      control.classList.add('activity-control')
+      const dot = document.createElement('span'); dot.className = 'activity-dot'; dot.setAttribute('aria-hidden', 'true'); control.prepend(dot)
+      const status = document.createElement('span'); status.className = 'activity-control-switch'; status.setAttribute('aria-hidden', 'true'); control.append(status)
+    }
     control.classList.add('compact-control')
+    if (icon === 'edit') control.classList.add('rename-control')
     setControlLabel(control, label.textContent.trim())
     if (accessibleName) control.setAttribute('aria-label', accessibleName)
   }

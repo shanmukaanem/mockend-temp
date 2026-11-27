@@ -13,9 +13,9 @@ function raiseStack() {
  * Show feedback above pages, trays, and dialogs without changing their layout.
  * Reusing a key replaces that operation's notice; empty text dismisses it.
  * @param {string} text
- * @param {{ key?: string, error?: boolean }} [options]
+ * @param {{ key?: string, error?: boolean, action?: { label: string, run: () => void } }} [options]
  */
-export function toast(text, { key = 'general', error = false } = {}) {
+export function toast(text, { key = 'general', error = false, action } = {}) {
   const previous = notices.get(key)
   if (!text) { previous?.close(); return }
   if (previous?.text === text) return
@@ -42,7 +42,16 @@ export function toast(text, { key = 'general', error = false } = {}) {
   dismiss.type = 'button'
   dismiss.textContent = '×'
   dismiss.setAttribute('aria-label', 'Dismiss notification')
-  item.append(message, dismiss)
+  item.append(message)
+  if (action) {
+    const link = document.createElement('button')
+    link.type = 'button'
+    link.className = 'toast-action'
+    link.textContent = action.label
+    link.addEventListener('click', () => { close(); action.run() })
+    item.append(link)
+  }
+  item.append(dismiss)
   let timer
   const close = () => {
     clearTimeout(timer)
@@ -50,7 +59,7 @@ export function toast(text, { key = 'general', error = false } = {}) {
     notices.delete(key)
     if (!notices.size && stack.matches(':popover-open')) stack.hidePopover()
   }
-  const start = () => { clearTimeout(timer); timer = setTimeout(close, error ? 6500 : 4000) }
+  const start = () => { clearTimeout(timer); timer = setTimeout(close, action ? 15000 : error ? 6500 : 4000) }
   notices.set(key, { text, close })
   dismiss.addEventListener('click', close)
   item.addEventListener('pointerenter', () => clearTimeout(timer))

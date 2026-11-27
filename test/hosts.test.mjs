@@ -115,6 +115,11 @@ test('Chromium host starts only the selected tab, reloads scenarios, and handles
     incoming.emit({ type: 'start', windowId: 4 });
     await nextTurn();
     assert.equal(recorded.at(-1).status, 'recording');
+    const acknowledgements = recorded.filter(message => message.type === 'status').length;
+    incoming.emit({ type: 'start', windowId: 4 });
+    await nextTurn();
+    assert.equal(recorded.filter(message => message.type === 'status').length, acknowledgements + 1, 'Repeated starts acknowledge the current state instead of leaving the control pending');
+    assert.equal(recorded.at(-1).status, 'recording');
     const navigated = { ...tab, active: true, url: 'https://opstrellis.com/' };
     listeners.updated.emit(tab.id, { url: navigated.url }, navigated);
     assert.equal(recorded.at(-1).type, 'site');

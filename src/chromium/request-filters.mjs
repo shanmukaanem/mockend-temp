@@ -59,7 +59,8 @@ function branch(container, name) {
   details.open = true;
   const heading = document.createElement('span');
   heading.textContent = name;
-  title.append(heading);
+  const count = document.createElement('small'); count.className = 'facet-count';
+  title.append(heading, count);
   const bulkLabel = document.createElement('label');
   const bulk = document.createElement('input');
   bulk.type = 'checkbox';
@@ -71,7 +72,7 @@ function branch(container, name) {
   facet.append(details, bulkLabel);
   container.append(facet);
   return {
-    facet, details, heading, options, bulk,
+    facet, details, heading, count, options, bulk,
     sync(values, labels) {
       for (const [value, { label, input }] of options) {
         if (!values.has(value) && !input.checked) {
@@ -105,7 +106,8 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
   const chips = byId('filter-chips');
   const all = byId('select-all-filters');
   const branches = groups.map(name => branch(facets, name));
-  const externalAll = new Set(externalGroups);
+  const externalAll = new Set(externalGroups.filter(index => index !== 5));
+  let defaultEndpoints = externalGroups.includes(5);
   const externalControls = new Map();
   for (const index of hiddenGroups) branches[index].facet.hidden = true;
   for (const index of externalGroups) {
@@ -141,6 +143,7 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
       menu.style.top = `${Math.max(6, Math.min(rect.bottom + 4, innerHeight - 180)) / scale}px`;
     });
     menu.addEventListener('change', event => {
+      if (index === 5) defaultEndpoints = false;
       const { bulk, options } = branches[index];
       if (event.target === bulk) {
         for (const { input } of options.values()) input.checked = bulk.checked;
@@ -244,6 +247,7 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
   return {
     add(index, value) {
       const { options, sync } = branches[index];
+      if (index === 5) defaultEndpoints = false;
       if (externalGroups.includes(index)) {
         externalAll.delete(index);
         if (storedSelections?.[index]) storedSelections[index].clear();
@@ -255,16 +259,17 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
       options.get(value).input.checked = true;
       apply();
     },
-    snapshot: () => branches.map(({ options }, index) => hiddenGroups.includes(index) || externalAll.has(index) ? [] : externalGroups.includes(index) && ![...options.values()].some(({ input }) => input.checked) ? ['@none'] : [
+    snapshot: () => branches.map(({ options }, index) => index === 5 && defaultEndpoints ? ['@api'] : hiddenGroups.includes(index) || externalAll.has(index) ? [] : externalGroups.includes(index) && ![...options.values()].some(({ input }) => input.checked) ? ['@none'] : [
       ...new Set([...(storedSelections?.[index] ?? []), ...[...options].filter(([, option]) => option.input.checked).map(([value]) => value)])
     ]),
     restore(selections = []) {
       this.resetOptions();
+      defaultEndpoints = externalGroups.includes(5) && (!selections[5] || selections[5].includes('@api'));
       for (const index of externalGroups) {
-        if (selections[index]?.length) externalAll.delete(index); else externalAll.add(index);
+        if (selections[index]?.length || (index === 5 && defaultEndpoints)) externalAll.delete(index); else externalAll.add(index);
       }
       storedSelections = selections.slice(0, groups.length).map((values, index) => new Set(
-        index === 0 ? values.map(value => value === 'XHR / Fetch' ? 'Fetch/XHR' : value)
+        index === 5 ? values.filter(value => value !== '@api') : index === 0 ? values.map(value => value === 'XHR / Fetch' ? 'Fetch/XHR' : value)
           : values
       ));
     },
@@ -278,7 +283,7 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
     update(rows) {
       syncQueryClear();
       const newestFirst = rows.slice().reverse();
-      const selections = branches.map(({ heading, options, sync }, index) => {
+      const selections = branches.map(({ count: facetCount, options, sync }, index) => {
         const saved = storedSelections?.[index];
         const values = new Set(newestFirst.flatMap(row => index === 2 ? row.values[index][0] : row.values[index]));
         if (index === 2) {
@@ -301,6 +306,7 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
         const selected = new Set([...options].filter(([, option]) => option.input.checked).map(([value]) => value));
         if (hiddenGroups.includes(index)) return new Set();
         if (externalGroups.includes(index)) {
+          if (index === 5 && defaultEndpoints) for (const [value, { input }] of options) input.checked = !/\.[^/]+$/.test(String(value));
           if (externalAll.has(index)) for (const { input } of options.values()) input.checked = true;
           const count = [...options.values()].filter(({ input }) => input.checked).length;
           const control = externalControls.get(index);
@@ -310,7 +316,7 @@ export function mountFilters(apply, { prefix = '', groups = defaultGroups, exter
           updateBulk(branches[index].bulk, [...options.values()].map(({ input }) => input));
           return externalAll.has(index) ? new Set() : new Set(count ? [...options].filter(([, option]) => option.input.checked).map(([value]) => value) : ['@none']);
         }
-        heading.textContent = groups[index] + (selected.size ? ` (${selected.size})` : '');
+        facetCount.textContent = selected.size ? ` (${selected.size})` : '';
         return selected;
       });
       for (const branch of branches) {

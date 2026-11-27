@@ -1,9 +1,11 @@
+import { mountButtonStrip } from './split-buttons.mjs'
+
 /** Give each tab strip its own CSS anchor; pointer motion never changes tab selection. */
 export function mountTabSliders() {
-  document.querySelectorAll('.workspace-tabs').forEach((bar, index) => {
+  document.querySelectorAll('.workspace-tabs').forEach(bar => {
+    mountButtonStrip(bar)
     bar.classList.add('sliding-tabs')
     bar.dataset.pointerMotion = ''
-    bar.style.setProperty('--tab-indicator-anchor', `--mockend-tab-${index}`)
     bar.addEventListener('pointerenter', event => {
       if (event.pointerType !== 'touch') bar.dataset.pointerMotion = ''
     })

@@ -49,6 +49,7 @@ function recorderFor(entry) {
 }
 
 const platform = {
+  refresh() { return active?.entry.engine?.banner.update(''); },
   async state() {
     return {
       mode: 'chromium', active: active?.ready ? active.tab : null, available: null,
@@ -112,7 +113,11 @@ async function stopRecording(client) {
 async function recordCurrentTab(client) {
   if (client.closed || !client.recording) return;
   const tab = await currentTab(client.windowId, client.tabId);
-  if (client.closed || !client.recording || (client.entry && client.entry.target.tabId === tab?.id && isWeb(tab.url ?? ''))) return;
+  if (client.closed || !client.recording) return;
+  if (client.entry && client.entry.target.tabId === tab?.id && isWeb(tab.url ?? '')) {
+    client.send({ type: 'status', status: 'recording' });
+    return;
+  }
   await stopRecording(client);
   client.recorder = undefined;
   client.targetTabId = tab?.id;

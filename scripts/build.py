@@ -104,7 +104,7 @@ def compile_host(host):
             shutil.copyfile(SRC / "chromium" / name, shared_capture / name)
         web_modules = [*output.joinpath("ui").glob("*.mjs"),
                        *(path for path in shared_capture.glob("*.mjs") if path.name != "recorder.mjs"),
-                       *(output / path for path in ("vscode/bridge.mjs", "core/config.mjs", "core/matcher.mjs", "core/url-parts.mjs", "core/http-statuses.mjs", "core/environment-rules.mjs"))]
+                       *(output / path for path in ("vscode/bridge.mjs", "core/config.mjs", "core/matcher.mjs", "core/url-parts.mjs", "core/http-statuses.mjs", "core/environment-rules.mjs", "core/parameter-examples.mjs", "core/variants.mjs"))]
     # Use the .js MIME mapping for browser and webview resources.
     for module in web_modules:
         code = module.read_text(encoding="utf-8").replace(".mjs'", ".js'")
@@ -113,13 +113,19 @@ def compile_host(host):
             module.unlink()
     requests = output / "chromium" / "requests.html"
     prefix = "" if host == "chromium" else "@@ROOT@@/"
-    panel = panel.replace("</head>", f'  <link rel="stylesheet" href="{prefix}chromium/requests.css">\n  <link rel="stylesheet" href="{prefix}ui/layout.css">\n</head>')
+    panel = panel.replace("</head>", f'  <link rel="stylesheet" href="{prefix}chromium/requests.css">\n  <link rel="stylesheet" href="{prefix}ui/layout.css">\n  <link rel="stylesheet" href="{prefix}ui/refinement.css">\n</head>')
     header, content = requests.read_text(encoding="utf-8").split("</header>", 1)
     panel = panel.replace("<body>", "<body>\n" + header + "</header>", 1)
     panel = panel.replace("<!-- VIEWS -->", content, 1)
     requests.unlink()
     panel = panel.replace("@@CSP@@", csp)
     (output / "panel.html").write_text(panel, encoding="utf-8", newline="\n")
+    formatter = output / "vendor" / "prettier"
+    formatter.mkdir(parents=True, exist_ok=True)
+    for name in ("standalone", "html", "postcss"):
+        source = ROOT / "node_modules" / "prettier" / (f"{name}.mjs" if name == "standalone" else f"plugins/{name}.mjs")
+        shutil.copyfile(source, formatter / f"{name}.js")
+    shutil.copyfile(ROOT / "node_modules" / "prettier" / "LICENSE", formatter / "LICENSE")
     icons = output / "icons"
     icons.mkdir()
     for size in (16, 32, 48, 128):

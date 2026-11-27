@@ -1,3 +1,5 @@
+import { effectiveRules } from './variants.mjs';
+import { MockBanner } from './mock-banner.mjs';
 import { logUrl, responseFor, selectRule } from './matcher.mjs';
 
 const fetchPatterns = [
@@ -57,14 +59,17 @@ export class Interceptor {
     this.abort = new AbortController();
     this.sessions = new Set();
     this.forwarded = new Map();
+    this.observedRoutes = new Map();
     this.tasks = new Set();
     this.stopping = undefined;
+    this.banner = new MockBanner(send, getConfig);
   }
 
   async start() {
     this.bypassServiceWorker = this.getConfig().settings.bypassServiceWorker;
     await this.enable(undefined);
     if (this.autoAttach) await this.attachChildren(undefined);
+    await this.banner.update();
   }
 
   async enable(session) {
@@ -157,7 +162,16 @@ export class Interceptor {
     try {
       const config = this.getConfig();
       const scenario = config.scenarios.find(item => item.id === config.activeScenarioId);
-      match = await selectRule(scenario.rules, event, readPostData, config);
+      if (resourceType === 'Fetch' || resourceType === 'XHR') {
+        const key = request.method + ' ' + logUrl(request.url);
+        this.observedRoutes.set(key, { method: request.method, url: request.url });
+        if (this.observedRoutes.size > 750) this.observedRoutes.delete(this.observedRoutes.keys().next().value);
+      }
+      match = await selectRule(effectiveRules(scenario), event, readPostData, config, [...this.observedRoutes.values()]);
+      if (match?.conflict) {
+        report(match.conflict); void this.banner.update(match.conflict);
+        match = undefined;
+      }
       if (!match) {
         const isApi = resourceType === 'Fetch' || resourceType === 'XHR';
         if (isApi && !signal.aborted) this.onForward?.(event, session);
@@ -215,7 +229,9 @@ export class Interceptor {
 
   async finish() {
     this.abort.abort();
+    await this.banner.stop();
     this.forwarded.clear();
+    this.observedRoutes.clear();
     await Promise.allSettled([...this.tasks]);
     const disable = async session => {
       await this.send('Fetch.disable', {}, session).catch(() => {});

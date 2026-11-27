@@ -54,7 +54,7 @@ th.request-method-column { width: 68px; }
 .request-type-column { width: 102px; }
 .request-status-column { width: 60px; }
 .request-actions-column { width: 62px; text-align: center; }
-#request-rows tr[data-hovered] td { background: var(--tint); }
+#request-rows tr[data-hovered]:hover td { background: var(--tint); }
 .request-url > * { display: block; overflow: hidden; white-space: nowrap; text-overflow: clip; }
 .request-url small { color: var(--muted); font-size: 10px; }
 .request-url .mono { font-size: 10.5px; }
@@ -388,7 +388,7 @@ main:has(#rules-view:not([hidden])) { max-width: none; width: 100%; min-height: 
 .rules-table th:nth-child(9) { width: 90px; }
 .rules-table th:nth-child(10) { width: 170px; }
 #rules tr { cursor: pointer; }
-#rules tr[data-hovered] td { background: var(--tint); }
+#rules tr[data-hovered]:hover td { background: var(--tint); }
 #rules .rule-main { font-weight: 400; overflow: hidden; text-overflow: clip; white-space: nowrap; width: 100%; }
 #rules .rule-switch { position: static; height: auto; margin: 0; }
 #rules .request-row-actions { display: flex; gap: 4px; }

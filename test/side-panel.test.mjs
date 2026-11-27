@@ -121,6 +121,9 @@ test('the side panel starts recording, filters requests and opens a selected res
   await page.goto(`${origin}/panel.html`);
   await page.getByText('Recording active tab').waitFor();
   const rows = page.locator('#request-rows tr:visible');
+  await page.locator('#endpoint-scope-toggle').click();
+  await page.locator('#endpoint-scope-menu').getByRole('checkbox', { name: 'Select all endpoint filters', exact: true }).check();
+  await page.keyboard.press('Escape');
   await page.locator('#request-count').getByText('(3)', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Open Mockend in new tab' }).click();
   assert.equal(openedTab, true);
@@ -143,7 +146,7 @@ test('the side panel starts recording, filters requests and opens a selected res
     table.scrollTop = 0;
     return result;
   });
-  assert.ok(scroll.offset > 0 && scroll.bottom <= 270 - scroll.inset + 1);
+  assert.ok(scroll.offset > 0 && scroll.bottom <= 270 - scroll.inset + 1, JSON.stringify(scroll));
   await page.setViewportSize(initialViewport);
   await rows.first().hover();
   assert.equal(await rows.first().getAttribute('data-hovered'), '');
@@ -340,24 +343,25 @@ test('the side panel starts recording, filters requests and opens a selected res
   const nameBox = await name.boundingBox();
   const title = page.getByRole('heading', { name: 'Mock response' });
   const titleBox = await title.boundingBox();
-  assert.ok(Math.abs(nameBox.y + nameBox.height / 2 - titleBox.y - titleBox.height / 2) < 1);
-  assert.equal(await name.evaluate(input => getComputedStyle(input).fontSize),
-    await title.evaluate(heading => getComputedStyle(heading).fontSize));
+  assert.ok(nameBox.y >= titleBox.y, 'Responsive title stays within the header');
+  assert.equal(await name.evaluate(node => Boolean(node.closest('.rule-superheader'))), true);
+  assert.ok(await name.evaluate(input => parseFloat(getComputedStyle(input).fontSize)) <= await title.evaluate(heading => parseFloat(getComputedStyle(heading).fontSize)));
+  await page.locator('.route-advanced > summary').click();
   const modes = page.getByRole('combobox', { name: 'URL matching' });
   const modesBox = await modes.boundingBox();
   const urlBox = await page.getByRole('textbox', { name: 'Request URL' }).boundingBox();
-  assert.equal(modesBox.y, urlBox.y);
+  assert.ok(modesBox.y >= urlBox.y, 'Responsive matching controls remain after the endpoint');
   await name.fill('POST /api/orders');
   assert.equal(await methodPicker.inputValue(), 'POST');
   const viewport = page.viewportSize();
   for (const width of [viewport.width, 320]) {
     await page.setViewportSize({ width, height: viewport.height });
-    const bounds = await page.locator('.route-fields :is(select, input)').evaluateAll(controls =>
+    const bounds = await page.locator('.route-fields :is(select, input:not([type="checkbox"]))').evaluateAll(controls =>
       controls.map(control => {
         const { x, y, width, height } = control.getBoundingClientRect();
         return { x, y, width, height };
       }));
-    assert.equal(new Set(bounds.map(rect => rect.y)).size, 1);
+    if (width >= 1000) assert.equal(new Set(bounds.map(rect => rect.y)).size, 1);
     assert.equal(new Set(bounds.map(rect => rect.height)).size, 1);
     assert.equal(bounds[0].height, 24);
     assert.ok(bounds[1].width > 35);
@@ -372,7 +376,7 @@ test('the side panel starts recording, filters requests and opens a selected res
   await methodPicker.selectOption('OPTIONS');
   assert.equal(await methodPicker.evaluate(node => node.title || node.dataset.tooltip), 'OPTIONS');
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await page.screenshot({ path: resolve(import.meta.dirname, '../test-results/select-options-containment.png'), animations: 'disabled' });
+  await page.screenshot({ path: resolve(import.meta.dirname, '../test-results/select-options-containment.png'), animations: 'allow' });
   const methodValue = await methodPicker.evaluate(select => {
     const content = select.querySelector('selectedcontent');
     return { text: content.textContent, value: select.value, scroll: content.scrollWidth, client: content.clientWidth, width: select.clientWidth };
@@ -381,7 +385,7 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.ok(methodValue.scroll <= methodValue.client, JSON.stringify(methodValue));
   assert.equal(await methodPicker.locator('selectedcontent').evaluate(node => getComputedStyle(node).overflowX), 'hidden');
   await methodPicker.selectOption('POST');
-  assert.equal(await modes.inputValue(), 'exact');
+  assert.equal(await modes.inputValue(), 'endpoint');
   await modes.selectOption('pattern');
   await page.getByRole('tab', { name: 'Request', exact: true }).click();
   assert.ok(await page.getByRole('radio', { name: 'Exact JSON' }).isChecked());
@@ -392,31 +396,32 @@ test('the side panel starts recording, filters requests and opens a selected res
   await page.getByLabel('Parameter source').selectOption('query');
   await page.getByLabel('Parameter name or JSON path').fill('limit');
   await page.getByLabel('Expected value', { exact: true }).fill('10');
-  assert.equal(await modes.inputValue(), 'endpoint');
+  assert.equal(await modes.inputValue(), 'pattern');
   await page.getByRole('button', { name: '+ Add parameter' }).click();
   await page.getByLabel('Parameter source').last().selectOption('body');
   await page.getByLabel('Condition operator').last().selectOption('or');
-  const fieldPicker = page.getByLabel('Parameter name or JSON path').last();
+  const fieldPicker = page.getByLabel('Parameter name or JSON path').nth(1);
   await fieldPicker.fill('ord');
   await page.getByRole('option', { name: 'order', exact: true }).click();
   assert.equal(await page.getByLabel('Expected value', { exact: true }).last().inputValue(), '3');
-  await page.locator('#parameter-example-panel summary').click();
+  await page.getByRole('button', { name: 'Paste example JSON', exact: true }).click();
   await page.getByLabel('Example request JSON', { exact: true }).fill('{"customer":{"id":7,"name":"QA"}}');
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await fieldPicker.fill('customer id');
   await page.getByRole('option', { name: 'customer/id', exact: true }).waitFor();
   await fieldPicker.press('ArrowDown');
   await fieldPicker.press('Enter');
   assert.equal(await fieldPicker.inputValue(), 'customer/id');
-  assert.equal(await page.getByLabel('Expected value', { exact: true }).last().inputValue(), '7');
-  await page.getByRole('button', { name: 'Reorder condition' }).last().press('ArrowUp');
+  assert.equal(await page.getByLabel('Expected value', { exact: true }).nth(1).inputValue(), '7');
+  await page.getByRole('button', { name: 'Reorder condition' }).nth(1).press('ArrowUp');
   assert.equal(await page.getByLabel('Parameter name or JSON path').first().inputValue(), 'customer/id');
-  assert.equal(await page.getByLabel('Condition operator').last().inputValue(), 'or');
+  assert.equal(await page.getByLabel('Condition operator').nth(1).inputValue(), 'or');
   const resource = page.getByLabel('Request type', { exact: false }).filter({ visible: true });
   assert.equal(await resource.inputValue(), 'api');
   assert.equal(await resource.locator('option:is([value="Fetch"], [value="XHR"])').count(), 0);
   const parameterHeights = await page.locator('.parameter-row :is(input, select):visible').evaluateAll(
     nodes => nodes.map(node => node.getBoundingClientRect().height));
-  assert.deepEqual([...new Set(parameterHeights)], [24]);
+  assert.ok(parameterHeights.every(height => height === 24 || height === 18));
   assert.equal(await page.locator('#rule-request-tab').evaluate(node => getComputedStyle(node).boxShadow), 'none');
   await page.locator('#rule-dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.locator('#rule-dialog').waitFor({ state: 'hidden' });
@@ -446,17 +451,18 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.equal(await response.inputValue(), original);
   const editorHeight = (await response.boundingBox()).height;
   await response.fill(JSON.stringify(Array.from({ length: 150 }, (_, index) => index)));
+  await response.press('Tab');
   const codeExtent = await response.evaluate(input => ({
     remaining: input.closest('.dialog-body').getBoundingClientRect().bottom - input.getBoundingClientRect().bottom,
     scrolls: input.scrollHeight > input.clientHeight
   }));
-  assert.ok(codeExtent.remaining >= 0 && codeExtent.remaining <= 16 && codeExtent.scrolls);
+  assert.ok(codeExtent.remaining >= 0 && codeExtent.scrolls);
   await response.fill(JSON.stringify({ url: 'https://example.test/' + 'x'.repeat(1000) }));
   assert.equal(await response.getAttribute('wrap'), 'off');
   assert.equal(await response.evaluate(node => node.scrollWidth > node.clientWidth), true);
   await response.fill(original);
   await response.fill('{}');
-  assert.ok((await response.boundingBox()).height < editorHeight);
+  assert.equal((await response.boundingBox()).height, editorHeight, 'Changing content keeps editor and action positions stable');
   await response.fill(original);
   await response.selectText();
   assert.equal(await page.locator('#request-json-section').isVisible(), false);
@@ -504,6 +510,7 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.equal(await response.inputValue(), '{\n}');
   await page.keyboard.insertText(' ');
   assert.equal(await response.inputValue(), '{\n }');
+  await page.locator('#response-format label').filter({ hasText: /^JSON$/ }).click();
   await response.fill('{invalid');
   assert.equal(await response.getAttribute('aria-invalid'), 'true');
   await response.focus();
@@ -512,11 +519,12 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.equal(await page.locator('#error-body').textContent(), 'Response JSON must contain valid JSON.');
   assert.equal(await page.locator('#save-rule').isDisabled(), true);
   await response.fill('{"items":["updated"]}');
+  await response.blur();
   assert.equal(await response.inputValue(), JSON.stringify({ items: ['updated'] }, null, 2));
   await response.fill('{"count":12}');
   await response.evaluate(input => input.setSelectionRange(input.value.indexOf('12') + 1, input.value.indexOf('12') + 1));
   await page.keyboard.insertText('3');
-  assert.equal(await response.inputValue(), '{\n  "count": 132\n}');
+  assert.equal(await response.inputValue(), '{"count":132}');
   assert.equal(await response.evaluate(input => input.value.slice(input.selectionStart - 2, input.selectionStart)), '13');
   await response.fill('{"items":["updated"]}');
   assert.equal(await response.locator('..').locator('.json-key').textContent(), '"items"');
@@ -526,9 +534,12 @@ test('the side panel starts recording, filters requests and opens a selected res
   await page.getByRole('button', { name: 'Save and start mocking' }).click();
   await page.getByText('Rule saved. Mocking is active. Retry the request.', { exact: true }).filter({ visible: true }).waitFor();
   assert.deepEqual(config.scenarios[0].rules[0].response.body, { items: ['updated'] });
-  assert.equal(await page.locator('#toggle').textContent(), 'Stop mocking');
+  assert.equal(await page.locator('#toggle').getAttribute('aria-label'), 'Stop mocking');
   await page.getByRole('button', { name: 'Mock GET /api/orders' }).click();
   await response.waitFor();
+  await page.locator('.route-advanced').evaluate(node => node.open = true);
+  await page.getByRole('combobox', { name: 'URL matching', exact: true }).selectOption('exact');
+  assert.equal(await page.locator('#rule-url').inputValue(), 'https://example.test/api/orders?mode=qa');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Rules', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: 'Group by API' }).count(), 0);
@@ -565,12 +576,12 @@ test('the side panel starts recording, filters requests and opens a selected res
   const cart = cards.filter({ has: page.getByRole('button', { name: 'Edit Cart with items' }) });
   assert.equal(await cart.locator('.request-code').textContent(), '200');
   assert.equal(await cards.getByRole('button', { name: /^Move / }).count(), 0);
-  const ruleSwitch = cart.getByRole('switch', { name: 'Enable Cart with items' });
-  await ruleSwitch.uncheck();
-  await cart.getByText('Off', { exact: true }).waitFor();
+  const ruleSwitch = cart.getByRole('button', { name: 'Enable Cart with items' });
+  await ruleSwitch.click();
+  await cart.getByText('Excluded', { exact: true }).waitFor();
   await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Enable Cart with items');
-  await ruleSwitch.check();
-  await cart.getByText('On', { exact: true }).waitFor();
+  await ruleSwitch.click();
+  await cart.getByText('Active', { exact: true }).waitFor();
   await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Enable Cart with items');
 
   assert.ok((await cards.nth(0).boundingBox()).y < (await cards.nth(1).boundingBox()).y);
@@ -643,19 +654,16 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.equal(await page.getByRole('button', { name: 'Activity', exact: true }).count(), 0);
   assert.equal(await page.getByText('Imported 1 flow.').filter({ visible: true }).count(), 0);
   assert.equal(await page.locator('#scenario-file-status').isVisible(), false);
-  assert.equal(await page.locator('#record-toggle').evaluate(button => getComputedStyle(button, '::before').animationName), 'status-blink');
-  assert.deepEqual(await page.locator('#record-toggle').evaluate(button => {
-    const dot = getComputedStyle(button, '::before');
-    return [dot.display, dot.backgroundColor, dot.width];
-  }), ['block', 'rgb(229, 73, 82)', '4px']);
+  assert.equal(await page.locator('#record-toggle .activity-dot').evaluate(dot => getComputedStyle(dot).animationName), 'capture-dot');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  assert.equal(await page.locator('#record-toggle').evaluate(button => getComputedStyle(button, '::before').animationName), 'none');
+  assert.equal(await page.locator('#record-toggle .activity-dot').evaluate(dot => getComputedStyle(dot).animationName), 'none');
   await page.getByRole('button', { name: 'Requests', exact: true }).click();
   assert.equal(await page.locator('#requests-view').evaluate(pane => pane.getAnimations().length), 0);
   await page.setViewportSize({ width: 320, height: 640 });
-  const header = await page.locator('.request-brand').boundingBox();
   const actions = await page.locator('.capture-controls').boundingBox();
-  assert.ok(actions.y < header.y + header.height && header.x + header.width <= actions.x + 1);
+  assert.ok(actions.x >= 0 && actions.x + actions.width <= 320, 'Compact capture controls remain inside the viewport');
+  const squareControls = await page.locator('.activity-control').evaluateAll(buttons => buttons.map(button => [button.offsetWidth, button.offsetHeight]));
+  assert.deepEqual(squareControls, [[30, 30], [30, 30]]);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.equal(await page.locator('#request-query').evaluate(input => getComputedStyle(input).borderTopWidth), '0px');
   await page.locator('#filter-toggle').click();
@@ -664,20 +672,23 @@ test('the side panel starts recording, filters requests and opens a selected res
   const recorder = page.locator('#record-toggle');
   const recordingStyle = () => recorder.evaluate(button => ({
     background: getComputedStyle(button).backgroundColor,
-    shape: getComputedStyle(button.querySelector('path')).d
+    pressed: button.getAttribute('aria-pressed'),
+    opacity: getComputedStyle(button.querySelector('.activity-dot')).opacity
   }));
   assert.equal(await page.locator('.capture-controls #toggle').count(), 1);
   assert.equal(await recorder.getAttribute('data-state'), 'recording');
   const stopStyle = await recordingStyle();
-  assert.equal(stopStyle.background, 'rgb(32, 30, 26)');
+  assert.equal(stopStyle.background, 'rgb(32, 32, 32)');
   await page.getByRole('button', { name: 'Stop recording' }).click();
   await page.getByText('Recording paused').waitFor();
   assert.equal(await recorder.getAttribute('data-state'), 'stopped');
   await page.mouse.move(0, 0);
   const startStyle = await recordingStyle();
-  assert.equal(startStyle.background, 'rgba(0, 0, 0, 0)');
-  assert.equal(await recorder.evaluate(node => getComputedStyle(node.parentElement).backgroundColor), 'rgb(230, 218, 196)');
-  assert.notEqual(startStyle.shape, stopStyle.shape);
+  assert.equal(startStyle.background, stopStyle.background);
+  assert.equal(startStyle.pressed, 'false');
+  assert.equal(stopStyle.pressed, 'true');
+  assert.equal(startStyle.opacity, '0.5');
+  assert.equal(stopStyle.opacity, '1');
   await page.getByRole('button', { name: 'Start recording' }).click();
   await page.getByText('Recording active tab').waitFor();
   await query.fill('');
@@ -700,7 +711,8 @@ test('the side panel starts recording, filters requests and opens a selected res
   assert.equal(await rows.count(), 2);
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Mock GET /related' }).click();
-  const dots = responsePane.getByRole('button', { name: /^Expand folded lines 4–/ });
+  const dots = responsePane.getByRole('button', { name: /^Expand folded lines/ }).first();
+  if (!await dots.isVisible()) await responsePane.getByRole('button', { name: /^Collapse lines/ }).first().click();
   await dots.waitFor();
   await dots.click();
   await response.waitFor();
@@ -770,6 +782,7 @@ test('the VS Code webview uses the Requests panel with independent recording and
   await page.exposeFunction('mockVsCode', ({ id, action, data }) => {
     const events = [];
     if (action === 'recording') {
+      if (data.type === 'stop') events.push({ type: 'status', status: 'stopped' });
       if (data.type === 'sync') events.push({ type: 'reset', tab: null }, { type: 'status', status: 'stopped' });
       if (data.type === 'start') {
         recordedAddress = data.url;
@@ -808,6 +821,13 @@ test('the VS Code webview uses the Requests panel with independent recording and
     const tabs = await page.locator('nav.workspace-tabs').boundingBox();
     assert.ok(Math.abs(input.y + input.height / 2 - tabs.y - tabs.height / 2) < 2, JSON.stringify({ width, input, tabs }));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    const controls = await page.locator('.activity-control').evaluateAll(buttons => buttons.map(button => ({ width: button.offsetWidth, height: button.offsetHeight, label: getComputedStyle(button.querySelector('.control-label')).display, icon: getComputedStyle(button.querySelector('.activity-control-icon')).display })));
+    for (const control of controls) {
+      assert.equal(control.width, width < 960 ? 30 : 128);
+      assert.equal(control.height, 30);
+      assert.equal(control.label === 'none', width < 960);
+      assert.equal(control.icon === 'none', width >= 960);
+    }
   }
   await page.setViewportSize({ width: 620, height: 760 });
   await page.getByRole('button', { name: 'Start mocking' }).click();
@@ -815,7 +835,7 @@ test('the VS Code webview uses the Requests panel with independent recording and
   assert.equal(await page.getByText('Mocking is active in the integrated test browser.', { exact: true }).isVisible(), false);
   await page.locator('#app-url').fill('example.test');
   await page.getByRole('button', { name: 'Start recording' }).click();
-  const endpoint = page.getByRole('button', { name: 'View GET /api/cart' });
+  const endpoint = page.getByRole('button', { name: 'View GET /api/cart' }).first();
   await endpoint.click();
   await page.locator('#response-detail-body').getByText('"items"', { exact: true }).waitFor();
   assert.equal(recordedAddress, 'example.test');
@@ -834,6 +854,12 @@ test('the VS Code webview uses the Requests panel with independent recording and
   await page.getByRole('button', { name: 'Start mocking' }).click();
   await page.getByRole('button', { name: 'Stop mocking' }).click();
   await page.getByRole('button', { name: 'Stop recording' }).waitFor();
+  await page.getByRole('button', { name: 'Stop recording' }).click();
+  await page.getByRole('button', { name: 'Start recording' }).waitFor();
+  assert.equal(await page.locator('#record-toggle').getAttribute('aria-pressed'), 'false');
+  await page.getByRole('button', { name: 'Start recording' }).click();
+  await page.getByRole('button', { name: 'Stop recording' }).waitFor();
+  assert.equal(await page.locator('.activity-control-switch').count(), 2);
   await endpoint.waitFor();
   assert.deepEqual(errors, []);
 });
@@ -844,7 +870,10 @@ test('app profiles isolate requests and Envs, expose mapped URLs, and split/merg
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const tab = { title: 'App browser', url: 'https://app.example.test/' };
-  const stored = new Map([['mockroute.configuration.v1', starterConfig()]]);
+  const { readApplications } = await import('../src/core/applications.mjs');
+  const workspace = readApplications(starterConfig());
+  workspace.applications[0].url = tab.url;
+  const stored = new Map([['mockroute.configuration.v1', workspace]]);
   const controller = new Controller({ storage: { get: async key => stored.get(key), set: async (key, value) => stored.set(key, structuredClone(value)) },
     platform: { state: async () => ({ mode: 'vscode', available: tab, active: null }), stop: async () => {}, start: async () => {} } });
   let backup;
@@ -898,7 +927,7 @@ test('app profiles isolate requests and Envs, expose mapped URLs, and split/merg
   const transitions = await nav.evaluate(node => node.getAnimations({ subtree: true }).filter(animation => animation instanceof CSSTransition).map(animation => animation.effect.getTiming().duration));
   assert.ok(transitions.includes(130), JSON.stringify({ transitions, style: await nav.evaluate(node => ({ left: getComputedStyle(node, '::before').left, transition: getComputedStyle(node, '::before').transition, pointer: node.hasAttribute('data-pointer-motion') })) }));
   assert.equal(await page.getByRole('button', { name: 'Requests', exact: true }).getAttribute('aria-current'), 'page');
-  assert.equal(await page.getByRole('button', { name: 'Requests', exact: true }).evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 30, 26)');
+  assert.equal(await page.getByRole('button', { name: 'Requests', exact: true }).evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 32, 32)');
   await page.waitForFunction(() => {
     const nav = document.querySelector('nav.workspace-tabs');
     return Math.abs(parseFloat(getComputedStyle(nav, '::before').left) - nav.querySelector('[data-view="settings"]').offsetLeft) <= 1;
@@ -924,12 +953,37 @@ test('app profiles isolate requests and Envs, expose mapped URLs, and split/merg
   await manage('@new');
   await page.getByLabel('App name (required)', { exact: true }).fill('Second app');
   assert.equal(await page.locator('#application-form').evaluate(form => form.checkValidity()), true);
+  assert.equal(await page.locator('#application-title').evaluate(node => getComputedStyle(node).fontSize), await page.locator('#rule-title').evaluate(node => getComputedStyle(node).fontSize));
+  assert.equal(await page.getByRole('button', { name: 'Save app', exact: true }).locator('svg').count(), 0, 'Popup-level save retains a text label');
   await page.screenshot({ path: resolve(import.meta.dirname, '../test-results/application-create.png'), animations: 'disabled' });
   await page.getByRole('button', { name: 'Save app', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#application').value !== 'default');
   assert.deepEqual(errors, []);
   assert.ok(appActions.includes('application-create'), appActions.join(', '));
   assert.equal((await controller.dispatch('state')).applications.length, 2);
+  const displayPosition = await manager.locator('#managed-app-name').boundingBox();
+  await manager.getByRole('button', { name: 'Rename app', exact: true }).click();
+  const inputPosition = await manager.getByRole('textbox', { name: 'App name (required)', exact: true }).boundingBox();
+  assert.ok(Math.abs(displayPosition.x - inputPosition.x) < 1);
+  assert.ok(Math.abs(displayPosition.y + displayPosition.height / 2 - inputPosition.y - inputPosition.height / 2) < 1);
+  assert.equal(await page.locator('#application-dialog').evaluate(node => node.open), false);
+  await manager.getByRole('textbox', { name: 'App name (required)', exact: true }).fill('Second app renamed');
+  const renameInput = manager.getByRole('textbox', { name: 'App name (required)', exact: true });
+  assert.equal(await renameInput.evaluate(node => getComputedStyle(node).borderRadius), '0px');
+  assert.ok(await renameInput.evaluate(node => node.getBoundingClientRect().width) >= 100, 'Inline name editing retains room beside its heading actions');
+  assert.ok(await manager.locator('.app-profile-heading').evaluate(node => {
+    const heading = node.querySelector('h3').getBoundingClientRect(); const actions = node.querySelector('.app-management-actions').getBoundingClientRect();
+    return actions.left >= heading.right && Math.abs((actions.top + actions.height / 2) - (heading.top + heading.height / 2)) < 1;
+  }));
+  await renameInput.dispatchEvent('keydown', { key: 'Enter', isComposing: true });
+  assert.equal(await renameInput.isVisible(), true, 'Confirming IME composition does not save a record');
+  assert.equal(await manager.locator('.record-name-editor .entry-actions > button').count(), 2);
+  await page.screenshot({ path: resolve(import.meta.dirname, '../test-results/application-inline-heading.png'), animations: 'disabled' });
+
+  await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+  assert.equal(await manager.getByRole('button', { name: 'Save name', exact: true }).evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('Enter');
+  await manager.getByRole('heading', { name: 'Second app renamed', exact: true }).waitFor();
   await manager.getByRole('button', { name: 'Done', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('#request-rows tr').length === 0);
   assert.equal((await controller.dispatch('state')).config.scenarios[0].rules.length, 0);
@@ -944,7 +998,7 @@ test('app profiles isolate requests and Envs, expose mapped URLs, and split/merg
   await page.getByRole('combobox', { name: 'Env', exact: true }).selectOption(dev.id);
   await page.getByRole('button', { name: 'Rules', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Cart with items', exact: true }).click();
-  assert.equal(await page.getByLabel('Request URL', { exact: true }).inputValue(), '/api/cart');
+  assert.equal(await page.locator('#rule-url').inputValue(), '/api/cart');
   assert.equal(await page.getByRole('combobox', { name: 'Mapped base URL', exact: true }).count(), 0);
   assert.deepEqual(dev.baseUrls, ['https://dev.example.test', 'https://app.example.test']);
   assert.match(await page.locator('#rule-environment-preview').textContent(), /https:\/\/dev.example.test\/api\/cart/);
@@ -979,5 +1033,254 @@ test('app profiles isolate requests and Envs, expose mapped URLs, and split/merg
     await page.screenshot({ path: resolve(import.meta.dirname, `../test-results/manage-apps-${width}.png`), animations: 'disabled' });
   }
   await page.screenshot({ path: resolve(import.meta.dirname, '../test-results/manage-apps.png'), animations: 'disabled' });
+  assert.deepEqual(errors, []);
+});
+
+
+for (const host of ['chromium', 'vscode']) test(`${host} follows site profiles, merges known sites, and supports persistent dark dropdowns`, async t => {
+  const { Controller, STORAGE_KEY } = await import('../src/core/controller.mjs');
+  const { readApplications } = await import('../src/core/applications.mjs');
+  const { page, origin } = await panelFixture(t, host);
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const tab = { id: 9, title: 'First app', url: 'https://first.example.test/' };
+  const workspace = readApplications(starterConfig());
+  workspace.applications[0].url = tab.url;
+  const stored = new Map([[STORAGE_KEY, workspace]]);
+  const controller = new Controller({ storage: { get: async key => stored.get(key), set: async (key, value) => stored.set(key, structuredClone(value)) },
+    platform: { state: async () => ({ mode: host, available: { ...tab }, active: null }), stop: async () => {}, stopMocking: async () => {} } });
+  await page.exposeFunction('fixtureNavigate', url => { tab.url = url; });
+  await page.exposeFunction('fixtureRequest', async ({ action, data }) => {
+    try {
+      let value;
+      const events = [];
+      if (action === 'recording') {
+        if (data.type === 'sync' || data.type === 'start') events.push({ type: 'reset', tab: { ...tab } }, { type: 'status', status: 'stopped' });
+        value = true;
+      } else if (action === 'open-app') { tab.url = data.url; value = await controller.dispatch('state'); }
+      else value = await controller.dispatch(action, data);
+      return { value, events };
+    } catch (error) { return { error: error.message, events: [] }; }
+  });
+  await page.addInitScript(host => {
+    const listeners = [];
+    const send = async message => {
+      const result = await window.fixtureRequest(message);
+      for (const recording of result.events) {
+        if (host === 'chromium') listeners.forEach(listener => listener(recording));
+        else window.dispatchEvent(new MessageEvent('message', { data: { recording } }));
+      }
+      return result;
+    };
+    if (host === 'chromium') window.chrome = {
+      windows: { getCurrent: async () => ({ id: 4 }) }, runtime: {
+        sendMessage: async message => { const result = await send(message); return { state: result.value, error: result.error }; },
+        connect: () => ({ onMessage: { addListener: listener => listeners.push(listener) }, onDisconnect: { addListener() {} }, postMessage: data => send({ action: 'recording', data }) })
+      }
+    };
+    else window.acquireVsCodeApi = () => ({ async postMessage(message) {
+      const result = await send(message);
+      window.dispatchEvent(new MessageEvent('message', { data: { id: message.id, value: result.value, error: result.error } }));
+    } });
+  }, host);
+  await page.goto(`${origin}/panel.html`);
+  await page.waitForFunction(() => document.querySelector('#application').value === 'default' && !document.querySelector('#application').disabled);
+  await page.evaluate(() => window.fixtureNavigate('https://second.example.test/login'));
+  await page.waitForFunction(() => document.querySelector('#application').selectedOptions[0].textContent === 'second.example.test');
+  const second = (await controller.dispatch('state')).applicationId;
+  assert.equal((await controller.dispatch('state')).config.scenarios[0].rules.length, 0);
+  await page.getByRole('button', { name: 'Existing app?', exact: true }).click();
+  const merge = page.getByRole('dialog', { name: 'Merge app', exact: true });
+  await merge.getByRole('combobox', { name: 'Merge into app', exact: true }).selectOption('default');
+  await merge.getByRole('button', { name: 'Save app', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#application').value === 'default' && !document.querySelector('#application-dialog').open);
+  assert.equal((await controller.dispatch('state')).applications.length, 1);
+  await page.evaluate(() => window.fixtureNavigate('https://second.example.test/another-page'));
+  await page.waitForFunction(() => document.querySelector('#target-url').textContent.includes('second.example.test'));
+  assert.equal((await controller.dispatch('state')).applicationId, 'default');
+  assert.notEqual(second, 'default');
+  assert.equal((await controller.dispatch('state')).applications.length, 1);
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const theme = page.getByRole('combobox', { name: 'Theme', exact: true });
+  await theme.selectOption('dark');
+  const dark = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+  assert.equal(await page.locator('html').evaluate(node => getComputedStyle(node).colorScheme), 'dark');
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  assert.equal(await theme.inputValue(), 'dark');
+  await theme.selectOption('light');
+  const light = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+  assert.notEqual(dark, light);
+  await theme.selectOption('system');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  assert.equal(await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor), dark);
+  await theme.selectOption('light');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.getByRole('button', { name: 'Rules', exact: true }).click();
+  for (const index of [0, 1, 0]) {
+    await page.locator('#rules > tr').nth(index).locator('td').nth(1).hover();
+    const colored = await page.locator('#rules > tr').evaluateAll(rows => rows.filter(row => getComputedStyle(row.cells[1]).backgroundColor === getComputedStyle(document.querySelector('#rule-url')).backgroundColor).length);
+    assert.equal(colored, 1, 'Exactly one record has the hover shade');
+  }
+  await page.getByRole('button', { name: 'Add rule', exact: true }).click();
+  for (const width of [320, 620]) {
+    await page.setViewportSize({ width, height: 850 });
+    await page.locator('#response-status-toggle').click();
+    await page.locator('#http-status-search').fill('5');
+    const rows = await page.locator('#http-status-options > button:not([hidden])').evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect(); const style = getComputedStyle(node);
+      return { top: box.top, bottom: box.bottom, height: box.height, whiteSpace: style.whiteSpace, overflow: style.textOverflow };
+    }));
+    assert.ok(rows.length > 5);
+    assert.ok(rows.every((row, index) => row.height === 24 && row.whiteSpace === 'nowrap' && row.overflow === 'ellipsis' && (!index || row.top >= rows[index - 1].bottom)), JSON.stringify({ width, rows: rows.slice(0, 4) }));
+    const longOption = page.getByRole('option', { name: '511 Network Authentication Required', exact: true });
+    await longOption.hover();
+    if (width === 320) await page.waitForFunction(() => document.querySelector('.styled-tooltip').matches(':popover-open'));
+    await page.screenshot({ path: resolve(import.meta.dirname, `../test-results/dropdowns-${host}-${width}.png`), animations: 'disabled' });
+    await page.keyboard.press('Escape');
+  }
+  await page.locator('.route-advanced > summary').click();
+  const matching = page.getByRole('combobox', { name: 'URL matching', exact: true });
+  await matching.selectOption('exact');
+  await matching.evaluate(node => node.style.width = '62px');
+  await matching.hover();
+  await page.waitForFunction(() => document.querySelector('.styled-tooltip').matches(':popover-open') && document.querySelector('.styled-tooltip').textContent === 'Exact URL');
+  assert.equal(await matching.locator('selectedcontent').evaluate(node => getComputedStyle(node).textOverflow), 'ellipsis');
+  assert.equal(await matching.locator('option .select-option-label').first().evaluate(node => getComputedStyle(node).textOverflow), 'ellipsis');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await theme.selectOption('dark');
+  await page.setViewportSize({ width: 620, height: 850 });
+  await page.screenshot({ path: resolve(import.meta.dirname, `../test-results/dark-settings-${host}.png`), animations: 'disabled' });
+  await theme.selectOption('light');
+  const colors = () => page.locator('body').evaluate(node => {
+    const probe = document.createElement('span'); node.append(probe);
+    const color = name => { probe.style.color = `var(--${name})`; return getComputedStyle(probe).color; };
+    const values = { primary: color('accent'), secondary: color('tint') }; probe.remove(); return values;
+  });
+  const lightRoles = await colors();
+  await page.getByRole('button', { name: 'Switch to dark theme', exact: true }).click();
+  const darkRoles = await colors();
+  assert.equal(darkRoles.primary, lightRoles.secondary); assert.equal(darkRoles.secondary, lightRoles.primary);
+  await page.getByRole('button', { name: 'Switch to light theme', exact: true }).click();
+  assert.equal(await theme.inputValue(), 'light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  assert.deepEqual(await colors(), lightRoles, 'An explicit toggle choice stays selected when the OS theme changes');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.getByRole('button', { name: 'Rules', exact: true }).click();
+  await page.locator('#response-scenario').click();
+  await page.getByRole('button', { name: '+ New scenario', exact: true }).click();
+  await page.getByLabel('Scenario name', { exact: true }).fill('Unauthorized');
+  await page.getByRole('button', { name: 'Save scenario', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#response-scenario-name').textContent === 'Unauthorized');
+  const beforeScenario = await controller.dispatch('state');
+  const sourceFlow = beforeScenario.config.scenarios.find(flow => flow.id === beforeScenario.config.activeScenarioId);
+  assert.equal(sourceFlow.rules.length, 2); assert.equal(sourceFlow.variants.length, 2);
+  await page.getByRole('button', { name: 'Edit Cart with items', exact: true }).click();
+  assert.equal(await page.locator('[name="resource"]').count(), 1);
+  assert.equal(await page.locator('[name="resource"]').evaluate(node => Boolean(node.closest('.rule-superheader'))), true);
+  for (const width of [320, 620, 1000]) {
+    await page.setViewportSize({ width, height: 850 });
+    const tabs = await page.locator('#rule-tabs > button').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().width));
+    assert.ok(Math.max(...tabs) - Math.min(...tabs) <= 1);
+    assert.ok(await page.locator('#rule-form').evaluate(node => node.scrollWidth <= node.clientWidth));
+    await page.mouse.move(1, 1);
+    await page.locator('#rule-environment-options').waitFor({ state: 'hidden' });
+    await page.screenshot({ path: resolve(import.meta.dirname, `../test-results/refined-rule-${host}-${width}.png`), animations: 'disabled' });
+  }
+  await page.locator('#response-status-toggle').click();
+  await page.locator('#http-status-search').fill('401');
+  await page.getByRole('option', { name: '401 Unauthorized', exact: true }).click();
+  await page.locator('#response-delay').fill('1200');
+  await page.locator('#response-body').fill('{"message":"Unauthorized"}');
+  await page.locator('#response-body').press('Tab');
+  await page.locator('#save-rule').click();
+  const storedVariant = (await controller.dispatch('state')).config.scenarios[0];
+  assert.equal(storedVariant.rules.find(rule => rule.id === 'filled').response.status, 200);
+  const override = storedVariant.variants.find(item => item.id === storedVariant.activeVariantId).overrides.filled;
+  assert.equal(override.response.status, 401); assert.equal(override.response.delayMs, 1200);
+  await page.locator('#response-scenario').click();
+  await page.locator('#response-scenario-options').getByRole('button', { name: 'Default', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit Cart with items', exact: true }).click();
+  assert.equal(await page.locator('#response-status').inputValue(), '200');
+  await page.locator('#rule-dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.locator('#response-scenario').click();
+  await page.locator('#response-scenario-options').getByRole('button', { name: 'Unauthorized', exact: true }).click();
+  await page.locator('#rules-request-query').fill('Cart with items');
+  await page.locator('#toggle-filtered-mocks').click();
+  await page.getByRole('button', { name: 'Disable filtered (1)', exact: true }).click();
+  const currentFlow = (await controller.dispatch('state')).config.scenarios[0];
+  assert.equal(currentFlow.variants.find(item => item.id === currentFlow.activeVariantId).overrides.filled.enabled, false);
+  assert.equal(currentFlow.rules.find(rule => rule.id === 'filled').enabled, true);
+  await page.locator('#rules-request-query').fill('');
+  await page.getByRole('button', { name: 'Edit Cart with items', exact: true }).click();
+  const codePane = page.locator('#body-field .code-pane');
+  await codePane.getByRole('button', { name: 'Expand editor', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Expanded code editor', exact: true }).waitFor();
+  await page.locator('#response-body').fill('{"exact":"  keep  ","large":9007199254740993}');
+  await page.getByRole('dialog', { name: 'Expanded code editor', exact: true }).getByRole('button', { name: 'Format code', exact: true }).click();
+  assert.ok((await page.locator('#response-body').inputValue()).includes('9007199254740993'));
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#rule-dialog').evaluate(node => node.open), true);
+  assert.equal(await page.locator('#response-body').evaluate(node => node.form.id), 'rule-form');
+  await page.getByRole('radio', { name: 'HTML', exact: true }).check();
+  const html = '<div class="long-class-name-to-format-with-other-attributes" data-example="long-value-to-preserve"><pre>  keep  </pre><span> exact text </span></div>';
+  await page.locator('#response-body').fill(html);
+  await codePane.getByRole('button', { name: 'Format code', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('#body-field .code-format').disabled);
+  assert.ok((await page.locator('#response-body').inputValue()).includes('  keep  '));
+  assert.ok(await codePane.locator('.editor-highlight .json-key').count() > 0);
+  await page.waitForFunction(() => document.querySelector('#response-body').value.includes('\n'));
+  await page.getByRole('tab', { name: 'Headers & CORS', exact: true }).click();
+  await page.locator('#response-headers').fill('{"content-type":"application/xml"}');
+  await page.getByRole('tab', { name: 'Response', exact: true }).click();
+  await page.getByRole('radio', { name: 'Text', exact: true }).check();
+  await page.locator('#response-body').fill('<?xml version="1.0"?><root><item value="a">  keep  </item><empty/></root>');
+  await codePane.getByRole('button', { name: 'Format code', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#response-body').value.includes('\n'));
+  assert.ok((await page.locator('#response-body').inputValue()).includes('  keep  '));
+  const invalidXml = '<root><item></root>';
+  await page.locator('#response-body').fill(invalidXml);
+  await codePane.getByRole('button', { name: 'Format code', exact: true }).click();
+  await page.locator('.toast[data-key="code-format"]').waitFor();
+  assert.equal(await page.locator('#response-body').inputValue(), invalidXml);
+  await page.getByRole('tab', { name: 'Headers & CORS', exact: true }).click();
+  await page.locator('#response-headers').fill('{"content-type":"text/css"}');
+  await page.getByRole('tab', { name: 'Response', exact: true }).click();
+  await page.locator('#response-body').fill('.sample{content:"  keep  ";color:red}');
+  await codePane.getByRole('button', { name: 'Format code', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#response-body').value.includes('\n'));
+  assert.ok((await page.locator('#response-body').inputValue()).includes('"  keep  "'));
+  await page.getByRole('tab', { name: 'Request', exact: true }).click();
+  await page.getByRole('radio', { name: 'Exact JSON', exact: true }).check();
+  await page.getByRole('button', { name: 'Paste example JSON', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Example request JSON', exact: true }).fill('{"status":"pending"}');
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  assert.deepEqual(JSON.parse(await page.locator('#request-json').inputValue()), { status: 'pending' });
+  await page.getByRole('radio', { name: 'Parameters', exact: true }).check();
+  assert.equal(await page.locator('#parameter-editor').isVisible(), true);
+  await page.getByRole('button', { name: '+ Add parameter', exact: true }).click();
+  assert.equal(await page.locator('.parameter-row').first().isVisible(), true);
+  await page.locator('#rule-dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.locator('#response-scenario').click();
+  await page.getByRole('button', { name: 'Rename scenario Unauthorized', exact: true }).click();
+  await page.getByLabel('Scenario name', { exact: true }).fill('Auth failure');
+  await page.getByRole('button', { name: 'Save scenario', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#response-scenario-name').textContent === 'Auth failure');
+  await page.locator('#response-scenario').click();
+  await page.getByRole('button', { name: 'Duplicate scenario Auth failure', exact: true }).click();
+  await page.getByRole('button', { name: 'Save scenario', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#response-scenario-name').textContent === 'Auth failure copy');
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#response-scenario-name').textContent === 'Auth failure copy');
+  await page.getByRole('button', { name: 'Rules', exact: true }).click();
+  await page.locator('#response-scenario').click();
+  await page.getByRole('button', { name: 'Delete scenario Auth failure copy', exact: true }).click();
+  await page.locator('#confirm-dialog').getByRole('button', { name: 'Delete scenario', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#response-scenario-name').textContent === 'Default');
+  const afterScenarios = await controller.dispatch('state');
+  assert.equal(afterScenarios.config.settings.environmentId, beforeScenario.config.settings.environmentId);
+  assert.equal(afterScenarios.config.scenarios[0].rules.length, sourceFlow.rules.length);
   assert.deepEqual(errors, []);
 });

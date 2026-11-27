@@ -162,7 +162,7 @@ button, input, select, summary, summary::before { transition: none !important; }
 /* Keep final controls reachable even below the minimum width of all columns. */
 .request-table th:last-child, .request-table tbody:not(#request-empty, #no-rules) td:last-child { position: sticky; right: 0; z-index: 2; background: var(--surface); }
 .request-table th:last-child { z-index: 3; background: var(--line); }
-#request-rows tr[data-hovered] td:last-child, #rules tr[data-hovered] td:last-child { background: var(--tint); }
+#request-rows tr[data-hovered]:hover td:last-child, #rules tr[data-hovered]:hover td:last-child { background: var(--tint); }
 #request-rows .record-last { padding-inline-end: 42px; }
 #request-rows .request-types { flex-direction: column; align-items: flex-start; max-height: 34px; gap: 2px; }
 #request-rows .request-types .type-badge { flex: none; height: 14px; max-width: 100%; line-height: 14px; }
@@ -290,14 +290,14 @@ input:not([type="checkbox"], [type="radio"], [type="hidden"]), textarea:not(.cod
 input:not([type="checkbox"], [type="radio"], [type="hidden"]):is(:focus, :active), textarea:not(.code-viewport):is(:focus, :active) { background-color: var(--tint); }
 #rule-form #rule-name { background-color: var(--tint); }
 input:not([type="checkbox"], [type="radio"], [type="hidden"]):focus-visible, textarea:not(.code-viewport):focus-visible { text-decoration: none; }
-input:not([type="checkbox"], [type="radio"], [type="hidden"]):focus-visible:not([aria-invalid="true"]), textarea:not(.code-viewport):focus-visible:not([aria-invalid="true"]) { outline: 1px solid var(--muted); outline-offset: 1px; }
+input:not([type="checkbox"], [type="radio"], [type="hidden"]):focus-visible:not([aria-invalid="true"]), textarea:not(.code-viewport):focus-visible:not([aria-invalid="true"]) { outline: none; border-block-end-color: var(--muted); }
 
 /* The selected tab stays black while pointer interest has its own softer indicator. */
 .sliding-tabs > button { position: relative; z-index: 1; }
 .sliding-tabs > button:is([aria-current], [aria-selected="true"]) { background: var(--accent) !important; color: var(--on-accent) !important; }
 @supports (position-anchor: --tab) and (inset-inline-start: anchor(self-start)) {
   .sliding-tabs > button:hover:not(:disabled) { anchor-name: var(--tab-indicator-anchor); }
-  html .workspace-tabs.sliding-tabs::before { display: block; position: absolute; position-anchor: var(--tab-indicator-anchor); inset-block: 0; inset-inline-start: anchor(self-start); inset-inline-end: anchor(self-end); width: auto; transform: none; border-radius: 8px; z-index: 0; background: var(--hover-ink); opacity: 0; }
+  html .workspace-tabs.sliding-tabs::before { display: block; position: absolute; position-anchor: var(--tab-indicator-anchor); inset-block: 0; inset-inline-start: anchor(self-start); inset-inline-end: anchor(self-end); width: auto; transform: none; border-radius: 0; z-index: 0; background: var(--hover-ink); opacity: 0; }
   html .workspace-tabs.sliding-tabs:has(> button:hover:not(:disabled))::before { opacity: 1; }
   .sliding-tabs > button:not([aria-current], [aria-selected="true"]) { background: transparent !important; }
   .sliding-tabs > button:hover:not(:disabled) { color: var(--on-accent) !important; }
@@ -420,8 +420,9 @@ button:is(#filter-toggle, #rules-filter-toggle):is(:hover, :focus-visible, [aria
 
 /* Editing stays in each URL row and preserves the cell surface. */
 .environment-cell-editor { display: block; min-height: 24px; line-height: 24px; white-space: nowrap; overflow: auto; background: transparent; cursor: text; }
-.environment-cell-editor:focus-visible { outline: 1px solid var(--muted); outline-offset: 1px; border-radius: 2px; }
-.environment-cell-editor[aria-invalid="true"] { outline: 1px solid var(--danger); }
+.environment-cell-editor { border-block-end: 1px solid transparent; }
+.environment-cell-editor:focus-visible { outline: none; border-block-end-color: var(--muted); border-radius: 0; }
+.environment-cell-editor[aria-invalid="true"] { border-block-end-color: var(--danger); }
 .environment-url-table tr[data-editing] td { background: transparent; }
 
 .environment-url-table td { padding-block: 5px; }
@@ -430,7 +431,7 @@ button:is(#filter-toggle, #rules-filter-toggle):is(:hover, :focus-visible, [aria
 select { inline-size: min(100%, var(--select-option-width, 100%)); max-inline-size: 100%; min-inline-size: 0; }
 @supports (appearance: base-select) {
   select > button { display: flex; flex: 1 1 0; min-inline-size: 0; max-inline-size: 100%; height: 100%; padding: 0; background: transparent !important; color: inherit !important; text-align: start; overflow: hidden; }
-  select selectedcontent { display: block; flex: 1 1 0; min-inline-size: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  select selectedcontent { display: block; flex: 1 1 0; min-inline-size: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   select::picker(select), #rule-form select::picker(select) { inline-size: anchor-size(width); min-inline-size: anchor-size(width); max-inline-size: calc(100vw / var(--panel-zoom) - 16px); }
 }
 .environment-picker { max-width: clamp(72px, calc(100vw / var(--panel-zoom) - 240px), 180px); }
@@ -564,18 +565,18 @@ select::picker-icon { margin-inline-start: auto; }
 .request-table :is([data-sort], [data-rule-sort]) > span:empty { visibility: hidden; }
 
 /* One continuous split-button surface, with inset dividers. */
-.split-buttons { position: relative; isolation: isolate; display: inline-flex; flex: none; gap: 0; overflow: hidden; border-radius: var(--control-radius); background: var(--tint); }
+html .split-buttons { position: relative; isolation: isolate; display: inline-flex; flex: none; flex-wrap: nowrap; gap: 0; padding: 0; overflow: hidden; border-radius: var(--control-radius); background: var(--tint); }
 html .split-buttons > button { position: relative; z-index: 1; flex: none; margin: 0; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none; }
 html .split-buttons > button::after { content: ''; position: absolute; inset: 4px auto 4px 0; width: 1px; height: auto; margin: 0; border: 0; transform: none; background: var(--ink); pointer-events: none; }
 html .split-buttons > button:first-of-type::after { display: none; }
 html .split-buttons > button:is([aria-pressed="true"], [aria-expanded="true"], [data-state="recording"]) { background: var(--accent) !important; color: var(--on-accent); }
 html .split-buttons > button:is(:hover, :focus-visible):not(:disabled) { background: var(--hover-ink) !important; color: var(--on-accent); }
-.split-buttons::before { content: ''; position: absolute; inset-block: 0; z-index: 0; background: var(--hover-ink); opacity: 0; pointer-events: none; }
+.split-buttons::before { border-radius: 0; content: ''; position: absolute; inset-block: 0; z-index: 0; background: var(--hover-ink); opacity: 0; pointer-events: none; }
 @supports (position-anchor: --split) and (inset-inline-start: anchor(self-start)) {
   .split-buttons > button:hover:not(:disabled) { anchor-name: var(--split-hover-anchor); }
   .split-buttons::before { position-anchor: var(--split-hover-anchor); inset-inline-start: anchor(self-start); inset-inline-end: anchor(self-end); }
   .split-buttons:has(> button:hover:not(:disabled))::before { opacity: 1; }
-  html .split-buttons > button:hover:not(:disabled):not([aria-pressed="true"], [aria-expanded="true"], [data-state="recording"]) { background: transparent !important; }
+  html .split-buttons > button:hover:not(:disabled):not([aria-pressed="true"], [aria-expanded="true"], [data-state="recording"], [aria-selected="true"], [aria-current]) { background: transparent !important; }
   @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
     .split-buttons::before { transition: inset-inline-start 130ms cubic-bezier(0.23, 1, 0.32, 1), inset-inline-end 130ms cubic-bezier(0.23, 1, 0.32, 1), opacity 130ms ease; }
   }
@@ -584,7 +585,7 @@ html .split-buttons > button:is(:hover, :focus-visible):not(:disabled) { backgro
 .filter-actions { align-self: center; }
 /* A Flow option has one hover surface, including its action buttons. */
 .scenario-option { grid-template-columns: minmax(0, 1fr) auto; }
-.scenario-actions { background: transparent; overflow: hidden; }
+html .scenario-actions { background: transparent; overflow: hidden; }
 .scenario-option:is(:hover, :focus-within) { background: var(--hover-ink); color: var(--on-accent); transition: background-color 180ms ease, color 130ms ease; }
 .scenario-option:has(.scenario-choice[aria-pressed="true"]) { background: var(--accent); color: var(--on-accent); }
 html .scenario-option :is(.scenario-choice, .scenario-action):is(button, :hover, :focus-visible, [aria-pressed="true"]) { background: transparent !important; color: inherit; }
@@ -607,8 +608,274 @@ button.search-clear { inset: 0 0 0 auto; transform: none; width: 24px; min-width
 html .split-buttons > button:nth-child(1 of button:not([hidden]))::after { display: none; }
 
 html .split-buttons > button:hover:not(:disabled)::after,
-html .split-buttons > button:nth-child(1 of button:hover:not(:disabled) ~ button:not([hidden]))::after { background: var(--on-accent); }
-.search-control:focus-within { outline: 1px solid var(--muted); outline-offset: 1px; }
+html .split-buttons > button:nth-child(1 of button:hover:not(:disabled) ~ button:not([hidden]))::after { background: var(--separator-ink); }
+.search-control:focus-within { outline: none; border-block-end-color: var(--muted); }
 
-.scenario-option:is(:hover, :focus-within) .scenario-actions > button::after { background: var(--on-accent); }
+.scenario-option:is(:hover, :focus-within) .scenario-actions > button::after { background: var(--separator-ink); }
 #rule-form .dropdown-control { padding-inline-end: 6px; }
+
+/* Balanced header hit areas share the same distance to each boundary divider. */
+:root { --separator-ink: color-mix(in srgb, var(--ink) 35%, transparent); }
+.request-table th { padding-inline: 3px; }
+.request-table th > :is([data-sort], [data-rule-sort]),
+.request-table th.request-id-column [data-sort],
+.request-table th:first-child > :is([data-sort], [data-rule-sort]) { padding-inline: 5px; border-radius: 6px; }
+.request-table .column-resize { right: -4px; width: 8px; }
+.request-table .column-resize::after { inset: 7px auto 7px 3.5px; width: 1px; background: var(--ink); opacity: .35; }
+html .split-buttons > button::after { background: var(--separator-ink); }
+html .split-buttons > button:is([aria-selected="true"], [aria-current]) { background: var(--accent) !important; color: var(--on-accent); }
+html .split-buttons > button:hover:is([aria-selected="true"], [aria-current]) { background: var(--accent) !important; }
+html .split-buttons > button:hover:not(:disabled)::after,
+html .split-buttons > button:nth-child(1 of button:hover:not(:disabled) ~ button:not([hidden]))::after { background: var(--separator-ink); }
+.environment-option[aria-pressed="true"], .environment-option[aria-pressed="true"]:hover { background: var(--accent) !important; color: var(--on-accent); }
+.environment-option[aria-pressed="true"] :is(small, strong) { color: inherit; }
+/* Native radio choices use the same segmented-control component as button tabs. */
+#rule-form .choice-group.split-buttons { gap: 0; padding: 0; border-radius: var(--control-radius); }
+#rule-form .choice-group.split-buttons > label { position: relative; z-index: 1; margin: 0; padding: 3px 12px; border-radius: 0; background: transparent; }
+#rule-form .choice-group.split-buttons > label + label::after { content: ''; position: absolute; inset: 4px auto 4px 0; width: 1px; background: var(--separator-ink); }
+#rule-form .choice-group.split-buttons > label:has(:checked) { background: var(--accent); color: var(--on-accent); }
+#rule-form .choice-group.split-buttons > label:hover::after, #rule-form .choice-group.split-buttons > label:hover + label::after { background: var(--separator-ink); }
+@supports (position-anchor: --segment) {
+  .split-buttons > label:hover { anchor-name: var(--split-hover-anchor); color: var(--on-accent); }
+  .split-buttons:has(> label:hover)::before { opacity: 1; }
+}
+/* Rule editor follows the same single-surface form layout for Add and Edit. */
+#rule-dialog { width: min(760px, calc(100vw / var(--panel-zoom) - 20px)); }
+#rule-form { height: min(640px, calc(100dvh / var(--panel-zoom) - 20px)); }
+#rule-form .rule-superheader { flex: none; background: transparent; justify-content: space-between; padding: 16px 16px 8px; }
+#rule-form .rule-superheader h2 { font-size: 13px; }
+#rule-form #close-rule { width: 24px; height: 24px; min-height: 24px; padding: 0; background: transparent; border-radius: 6px; }
+.rule-name-field { flex: none; padding: 0 16px; }
+#rule-form #rule-name { width: 100%; min-height: 28px; height: 28px; padding: 4px 8px; background: var(--tint); font-size: 12px; }
+#rule-form .rule-route { padding: 12px 16px; }
+.route-fields label, .route-fields label > :not(select), .rule-origin-field > span { font-size: 10px; line-height: 14px; }
+.route-fields label { display: block; margin-bottom: 4px; }
+.route-fields > label { margin: 0; }
+.route-fields > label > span:not(.sr-only) { display: block; margin-bottom: 4px; }
+#rule-form .rule-url-parts { display: grid; grid-template-columns: minmax(74px, min(var(--rule-env-width, 100px), 25%)) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+.rule-base-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; }
+#rule-form .rule-origin-field > span { display: block; margin: 0 0 4px; overflow: hidden; white-space: nowrap; }
+#rule-form .rule-origin-value { height: 24px; padding: 3px 8px; line-height: 18px; background: var(--tint); border-radius: 8px; overflow: hidden; white-space: nowrap; }
+#rule-form #rule-tabs { margin: 0 16px; max-width: calc(100% - 32px); }
+#rule-form .dialog-body { padding: 12px 16px; background: transparent; }
+#rule-form > .dialog-foot { padding: 10px 16px 16px; }
+#rule-form > .dialog-foot > button { flex: none; width: auto; min-width: 88px; max-width: none; }
+.matching-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0; }
+.matching-heading h3 { font-size: 12px; font-weight: 600; }
+.matching-heading > button { flex: none; }
+#parameter-example-panel:not([open]) { display: none; }
+#parameter-example-panel[open] { margin: 0; }
+#parameter-editor:has(#parameter-example-panel[open]) :is(#parameter-rows, #add-parameter, .parameter-columns) { display: none; }
+.example-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+#parameter-editor .example-actions small { margin: 0; }
+.parameter-columns, .parameter-row, .parameter-row:first-child { display: grid; grid-template-columns: 14px minmax(70px, .8fr) minmax(80px, 1.3fr) 64px minmax(80px, 1fr) 24px; gap: 6px; align-items: center; }
+.parameter-columns { margin-bottom: 5px; font-size: 10px; color: var(--muted); }
+.parameter-row > .parameter-grip { grid-column: 1; }
+.parameter-row > select:not(.parameter-join) { grid-column: 2; }
+.parameter-row > .parameter-picker { grid-column: 3; }
+.parameter-row > .parameter-comparison { grid-column: 4; min-width: 0; padding: 3px 8px; height: 24px; background: var(--tint); border-radius: 8px; font-size: 10px; }
+.parameter-row > input { grid-column: 5; }
+.parameter-row > .parameter-remove { grid-column: 6; }
+.parameter-row { --condition-row: 2; }
+.parameter-row:first-child { --condition-row: 1; }
+.parameter-row > :not(.parameter-join) { grid-row: var(--condition-row); }
+.parameter-row > .parameter-join { grid-column: 1 / -1; grid-row: 1; justify-self: center; width: 52px; height: 18px; min-height: 18px; font-size: 9px; }
+.parameter-row:not(:first-child):has(.parameter-join option[value="or"]:checked) { margin-top: 0; border-top: 0; padding-top: 0; }
+.parameter-row .parameter-grip { min-height: 24px; }
+.parameter-row .parameter-remove { width: 24px; height: 24px; min-height: 24px; display: inline-grid; place-items: center; }
+@media (max-width: 480px) {
+  .parameter-columns { display: none; }
+  .parameter-row, .parameter-row:first-child { grid-template-columns: 14px minmax(64px, 1fr) minmax(80px, 1.3fr) 24px; }
+  .parameter-row > select:not(.parameter-join), .parameter-row > .parameter-comparison { grid-column: 2; }
+  .parameter-row > .parameter-picker, .parameter-row > input { grid-column: 3; }
+  .parameter-row > .parameter-remove { grid-column: 4; }
+  .parameter-row > .parameter-grip, .parameter-row > .parameter-remove { grid-row: 2 / span 2; align-self: start; }
+  .parameter-row > .parameter-picker, .parameter-row > select:not(.parameter-join) { grid-row: 2; }
+  .parameter-row > :is(.parameter-comparison, input) { grid-row: calc(var(--condition-row) + 1); }
+  .parameter-row:first-child > .parameter-grip, .parameter-row:first-child > .parameter-remove { grid-row: 1 / span 2; }
+  .parameter-row:first-child > .parameter-picker, .parameter-row:first-child > select:not(.parameter-join) { grid-row: 1; }
+}
+
+.route-fields { grid-template-columns: min(84px, 22%) minmax(0, 1fr) min(114px, 24%) min(96px, 22%); gap: 6px; }
+
+/* Keep the resize hit area inside its sticky cell; the line sits on the boundary. */
+.request-table .column-resize { right: 0; }
+.request-table .column-resize::after { inset-inline-start: 7px; }
+
+.rule-base-fields { max-height: 112px; overflow: auto; scrollbar-width: none; align-content: start; }
+
+#rule-form .choice-group.split-buttons > label:hover:not(:has(:checked)) { background: var(--hover-ink); color: var(--on-accent); }
+@supports (position-anchor: --segment) { #rule-form .choice-group.split-buttons > label:hover:not(:has(:checked)) { background: transparent; } }
+
+/* Joined controls keep one outer silhouette at every viewport size. */
+html:not(.standalone) .capture-controls.split-buttons { gap: 0; }
+html .workspace-tabs.split-buttons::before { border-radius: 0; }
+.request-table :is([data-sort], [data-rule-sort]) { display: flex; align-items: center; gap: 0; }
+.request-table :is([data-sort], [data-rule-sort]) > span { flex: none; display: inline-grid; place-items: center; }
+html button.rename-control { display: inline-grid; place-items: center; width: var(--control-size); min-width: var(--control-size); max-width: var(--control-size); padding-inline: 5px; }
+html button.rename-control .control-label { display: none; }
+input:not([type="checkbox"], [type="radio"]), textarea { border: 0; border-block-end: 1px solid transparent; }
+input:not([type="checkbox"], [type="radio"]):focus-visible, textarea:focus-visible { outline: none; border-block-end-color: var(--muted); text-decoration: none; }
+.environment-url-table th { position: relative; }
+.environment-url-table .column-resize::after { width: 1px; background: var(--separator-ink); opacity: 1; }
+.environment-url-table .column-resize:is(:hover, :focus-visible)::after { width: 1px; background: var(--separator-ink); opacity: 1; }
+
+.environment-url-table table.sized-table th { width: auto; }
+
+#rule-form :is(input, textarea)[aria-invalid="true"] { box-shadow: none; border-block-end-color: var(--danger); }
+
+/* Reserve filter feedback space before the first selection. */
+.request-filter-tree .applied-filters { display: grid !important; visibility: visible; min-height: 52px; max-height: 52px; overflow: auto; align-content: flex-start; }
+.request-filter-tree .applied-filters[hidden] { visibility: hidden; }
+.request-filter-tree .request-facets { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); align-items: start; }
+.request-filter-tree .filter-facet { width: auto; min-width: 0; }
+.request-filter-tree .request-facets summary > span { display: inline-block; min-width: 8ch; }
+.request-filter-tree .facet-count { display: inline-block; width: 4ch; font-variant-numeric: tabular-nums; }
+html .split-buttons > button:is([aria-pressed="true"], [aria-expanded="true"], [aria-selected="true"], [aria-current], [data-state="recording"]) + button::after { visibility: hidden; }
+html .split-buttons > button:nth-child(1 of button:is([aria-expanded="true"]) ~ button)::after { visibility: hidden; }
+#rule-form .choice-group.split-buttons > label:has(:checked) + label::after { visibility: hidden; }
+.request-table tbody td, .environment-url-table td { vertical-align: middle; }
+.request-table .column-resize:focus-visible { outline: 1px solid var(--muted); outline-offset: -2px; }
+#rule-form .response-controls > label:has(select[name="kind"]) { flex: 0 1 var(--kind-width, 144px); width: var(--kind-width, 144px); min-width: min(144px, 100%); }
+#rule-form .response-controls select[name="kind"] { width: 100%; }
+.rule-origin-value { display: flex; align-items: center; }
+.record-name-editor { display: inline-flex; align-items: center; gap: 4px; width: 100%; }
+.record-name-editor input { min-width: 0; flex: 1; background: transparent !important; margin: 0; }
+.record-name-editor button { flex: none; }
+.environment-draft-record { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.environment-draft-record :is(th, td) { padding: 5px 8px; text-align: left; vertical-align: top; }
+.environment-draft-record th { background: var(--line); font-size: 11px; }
+.environment-draft-record td { border-bottom: 1px solid var(--line); }
+#environment-form .environment-draft-record input { margin: 0; background: transparent; }
+#environment-form .environment-draft-record { margin-block-end: 8px; }
+
+#environment-add-row > td { padding: 5px 8px; }
+#environment-url-form { margin: 0; gap: 6px; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; }
+#environment-url-form :is(label, #environment-url-help) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#environment-url-form input { margin: 0; background: transparent; }
+#environment-url-form .environment-form-actions { flex-wrap: nowrap; max-width: none; }
+#environment-url-form .environment-form-actions > button.compact-control { width: var(--control-size); min-width: var(--control-size); max-width: var(--control-size); padding-inline: 5px; }
+#environment-url-form .control-label { display: none; }
+html :is(button:disabled, select:disabled, input:disabled, [aria-disabled="true"]), label:has(> input:disabled) { cursor: not-allowed; }
+.column-resize, .sized-table.resizing, .sized-table.resizing * { cursor: url('./column-resize.svg') 12 12, col-resize; }
+
+html .environment-form-actions.split-buttons > button.primary { background: var(--accent) !important; color: var(--on-accent); }
+
+/* Dividers belong to the strip, independently of either button's hit area. */
+html .split-buttons > button::after, #rule-form .choice-group.split-buttons > label::after { content: none; display: none; }
+html .split-buttons > .split-divider { position: relative; flex: none; align-self: stretch; width: 0; margin: 0; padding: 0; z-index: 2; pointer-events: none; }
+.split-divider::before { content: ''; position: absolute; inset: var(--split-divider-inset, 4px) auto var(--split-divider-inset, 4px) -.5px; width: var(--split-divider-width, 1px); background: var(--split-divider-color, var(--separator-ink)); }
+.app-profile-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.app-profile-heading h3 { flex: 1; min-width: 0; margin: 0; }
+.app-profile-heading .app-management-actions { flex: none; margin: 0; }
+.record-name-editor input, .environment-cell-editor { border-radius: 0 !important; }
+#rule-form .route-fields { grid-template-columns: min(84px, 22%) minmax(0, 1fr) min(114px, 29%); }
+#request-json-section > label { display: block; width: min(220px, 100%); margin-bottom: 12px; font-size: 10px; }
+#rule-form .response-controls > .response-format-field { flex: none; width: auto; min-width: 0; }
+.response-format-field > span { display: block; font-size: 10px; margin-bottom: 4px; }
+#rule-form #response-format label { padding-inline: 8px; }
+@media (max-width: 480px) {
+  .app-profile-heading { flex-wrap: wrap; }
+  .app-profile-heading .app-management-actions { max-width: 100%; }
+  .app-profile-heading .app-management-actions button { min-width: 0; padding-inline: 4px; font-size: 10px; }
+  #rule-form .response-controls { flex-wrap: wrap; justify-content: flex-start; }
+  #rule-form .response-controls > .response-format-field { flex-basis: 100%; }
+}
+
+.app-profile-heading { flex-wrap: nowrap; }
+.app-profile-heading .compact-control .control-label { display: none; }
+.app-profile-heading .compact-control { width: var(--control-size); min-width: var(--control-size); max-width: var(--control-size); }
+@container environment-detail (width >= 300px) {
+  .app-profile-heading .compact-control:not(.rename-control) .control-label { display: inline; }
+  .app-profile-heading .compact-control:not(.rename-control) { width: max-content; max-width: none; }
+}
+.environment-draft-record td { vertical-align: middle; }
+
+.enabled-heading { display: flex; align-items: center; gap: 4px; height: 24px; }
+.enabled-heading > input[role="switch"] { flex: none; width: 27px; min-width: 27px; height: 16px; min-height: 16px; margin: 0; padding: 2px; }
+.request-table .enabled-heading > [data-rule-sort] { position: static; inset: auto; width: auto; flex: 1; min-width: 0; height: 24px; min-height: 24px; padding: 4px 5px; border-radius: 6px; background: transparent; }
+
+#request-rows .request-row-actions.split-separators { display: flex; flex-direction: column; }
+#request-rows .request-row-actions.split-separators > .split-divider { position: relative; flex: none; width: 100%; height: 0; z-index: 2; pointer-events: none; }
+#request-rows .request-row-actions.split-separators > .split-divider::before { inset: -.5px 4px auto; width: auto; height: var(--split-divider-width, 1px); }
+#request-rows .request-row-actions .request-mock::after { content: none; }
+#request-rows .request-row-actions .request-mock { box-shadow: none; }
+.rule-origin-value[contenteditable]:focus-visible { border-radius: 0 !important; outline: none; border-block-end: 1px solid var(--muted); }
+.rule-origin-value[aria-invalid="true"] { border-block-end: 1px solid var(--danger); }
+
+.app-profile-heading:has(input) .app-management-actions .compact-control .control-label { display: none; }
+.app-profile-heading:has(input) .app-management-actions .compact-control { width: var(--control-size); max-width: var(--control-size); }
+.app-profile-heading h3 { white-space: nowrap; overflow: hidden; }
+
+/* Record entry keeps the same text inset and baseline as its display state. */
+input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="search"]) { padding-block: 0; line-height: 22px; }
+input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="search"]):focus-visible { border-block-end: 1px solid var(--muted); }
+.record-name-editor input { padding-inline: 0 !important; font: inherit; height: 24px; line-height: 24px; }
+.app-profile-heading h3, #environment-detail-title { min-height: 24px; line-height: 24px; }
+.environment-cell-editor { display: flex; align-items: center; height: 24px; min-height: 24px; padding: 0; line-height: inherit; }
+.entry-actions { display: inline-flex; flex: none; align-self: center; }
+html .entry-actions > button.entry-action { display: inline-grid; place-items: center; width: 24px; min-width: 24px; max-width: 24px; height: 24px; min-height: 24px; padding: 0; line-height: 1; }
+.entry-actions .control-label { display: none !important; }
+.entry-action svg { display: block; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+html .entry-actions > button.primary { background: var(--accent) !important; color: var(--on-accent); }
+#rule-form .rule-superheader { gap: 8px; padding: 12px 16px; justify-content: flex-start; }
+#rule-form .rule-superheader h2 { flex: none; white-space: nowrap; }
+#rule-form .rule-name-field { flex: 1; min-width: 0; padding: 0; }
+#rule-form #rule-name { padding-inline: 0; font: inherit; height: 24px; min-height: 24px; margin: 0; }
+#rule-scenario-name { flex: 0 1 auto; min-width: 0; max-width: 24%; font-size: 10px; }
+#rule-form #close-rule { flex: none; margin-inline-start: auto; }
+#rule-form .rule-route { container: rule-route / inline-size; }
+#rule-form .route-fields { display: grid; grid-template-columns: minmax(62px, .6fr) minmax(140px, 1.5fr) minmax(140px, 1.8fr) minmax(90px, 1fr) minmax(90px, 1fr); gap: 8px; align-items: end; }
+#rule-form .route-fields > * { min-width: 0; margin: 0; }
+#rule-form .rule-base-fields { display: block; max-height: none; overflow: visible; width: 100%; }
+#rule-form .rule-origin-value { min-height: 24px; height: 24px; margin: 0; background: var(--tint); border-radius: var(--control-radius); font-weight: 400; }
+#rule-form .route-fields input, #rule-form .route-fields select { width: 100%; margin: 0; }
+@container rule-route (width < 620px) {
+  #rule-form .route-fields { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .route-method { grid-column: span 1; } .rule-base-fields { grid-column: span 3; } .route-endpoint { grid-column: span 2; }
+  .rule-env-field, .route-match { grid-column: span 3; }
+}
+@container rule-route (width < 380px) {
+  #rule-form .route-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .route-method { grid-column: span 1; } .rule-base-fields { grid-column: span 3; } .route-endpoint { grid-column: span 4; }
+  .rule-env-field, .route-match { grid-column: span 2; }
+}
+#rule-form .response-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr) 64px; align-items: end; gap: 6px; }
+#rule-form .response-controls > *, #rule-form .response-controls > #status-field { width: auto; min-width: 0; margin: 0; }
+#rule-form .response-controls > div { display: block; }
+#rule-form #error-field { display: block; width: min(260px, 100%); margin: 0 0 8px; }
+#rule-form #error-field[hidden] { display: none; }
+@media (max-width: 480px) {
+  #rule-form .response-controls { grid-template-columns: minmax(0, 1fr) 64px; }
+  #rule-form .response-controls > .response-format-field { grid-column: 1 / -1; }
+  #rule-form .response-controls > #status-field { grid-column: 1; }
+  #rule-form .response-controls > div:last-child { grid-column: 2; }
+}
+#environment-url-form { grid-template-columns: var(--column-0, 25%) var(--column-1, 50%) minmax(0, 1fr); gap: 0; }
+#environment-url-form > div:not(.environment-form-actions) { width: calc(100% - 16px); }
+#environment-url-form input { padding-inline: 0; font: inherit; }
+#environment-url-form > div:nth-child(2) { font-weight: 400; }
+
+#rule-form .rule-origin-field > span { font-size: 10px; font-weight: 600; }
+
+/* Form titles share one scale across dialogs and inline record editors. */
+dialog .dialog-head h2, #rule-form .rule-superheader h2, .environment-detail #environment-detail-title, .app-profile-heading h3 { font-size: 13px; font-weight: 650; line-height: 24px; letter-spacing: 0; }
+
+:root { color-scheme: light dark; }
+:root:has(> head > meta[name="color-scheme"][content="light"]) { color-scheme: light; }
+:root:has(> head > meta[name="color-scheme"][content="dark"]) { color-scheme: dark; }
+html .toast > button.toast-action { width: auto; height: auto; min-height: 20px; margin: 0; padding: 0 2px; font: inherit; text-decoration: underline; white-space: nowrap; }
+#color-scheme { width: var(--select-option-width, 120px); }
+:is(.dropdown-control, .scenario-choice, .scope-toggle, .status-option, .parameter-option), select, select option { min-inline-size: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(.dropdown-control, .scope-toggle) > span, #scenario-name, #rule-environment-value, select selectedcontent { min-inline-size: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.http-status-menu [role="listbox"] { display: flex; flex-direction: column; align-items: stretch; }
+.http-status-menu .status-option { display: block; flex: none; max-width: 100%; height: var(--control-size); min-height: var(--control-size); max-height: var(--control-size); line-height: 16px; }
+:is(.dropdown-menu, .scope-menu, .base-url-menu, .rule-env-menu) label > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (hover: hover) {
+  :is(#rules, #request-rows, #environment-url-rows) > tr > td { background: inherit; transition: none !important; }
+  :is(#rules, #request-rows, #environment-url-rows) > tr { background: var(--surface); }
+  :is(#rules, #request-rows, #environment-url-rows) > tr:hover { background: var(--tint); }
+  :is(#rules, #request-rows, #environment-url-rows) > tr:not(:hover) > td { background: var(--surface); }
+}
+
+select .select-option-label { display: block; flex: 1 1 0; min-inline-size: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

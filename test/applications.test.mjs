@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { starterConfig, validateConfig } from '../src/core/config.mjs'
-import { readApplications, mergeApplications, splitApplication } from '../src/core/applications.mjs'
+import { readApplications, mergeApplications, splitApplication, followApplication, applicationOrigins } from '../src/core/applications.mjs'
 import { mapConfigEnvironments, mapRuleEnvironment } from '../src/core/environment-rules.mjs'
 import { ruleUrls, selectRule } from '../src/core/matcher.mjs'
 import { Controller, STORAGE_KEY } from '../src/core/controller.mjs'
@@ -137,4 +137,91 @@ test('saving a recorded Flow groups its API hosts into the selected Env', async 
   assert.ok(env.baseUrls.includes('https://accounts.qa.example.com'))
   assert.ok(env.baseUrls.includes('https://orders.qa.example.com'))
   assert.deepEqual(saved.config.scenarios[0].rules.map(rule => rule.url), ['/users', '/orders'])
+})
+
+
+test('site origins select existing apps, isolate new sites, and survive merge and reload', () => {
+  const workspace = readApplications(starterConfig())
+  workspace.applications[0].url = 'https://first.example.test/dashboard'
+  const first = workspace.activeApplicationId
+  assert.equal(followApplication(workspace, 'https://first.example.test/settings?tab=1').changed, false)
+  assert.equal(workspace.applications.length, 1)
+  const result = followApplication(workspace, 'https://second.example.test/login')
+  assert.equal(result.created, true)
+  assert.equal(workspace.applications.length, 2)
+  assert.equal(workspace.applications[1].config.scenarios[0].rules.length, 0)
+  const second = workspace.activeApplicationId
+  followApplication(workspace, 'https://second.example.test/home')
+  assert.equal(workspace.activeApplicationId, second)
+  followApplication(workspace, 'https://first.example.test/')
+  assert.equal(workspace.activeApplicationId, first)
+  mergeApplications(workspace, second, first)
+  const restored = readApplications(structuredClone(workspace))
+  followApplication(restored, 'https://second.example.test/home')
+  assert.equal(restored.activeApplicationId, first)
+  assert.equal(restored.applications.length, 1)
+  assert.deepEqual(applicationOrigins(restored.applications[0]), ['https://first.example.test', 'https://second.example.test'])
+  assert.throws(() => followApplication(restored, 'file:///tmp/a'))
+})
+
+test('automatic app changes preserve the browser, persist atomically, and retain separate activity', async () => {
+  const workspace = readApplications(starterConfig())
+  workspace.applications[0].url = 'https://first.example.test/'
+  const stored = new Map([[STORAGE_KEY, workspace]])
+  let fail = false
+  let stopMocking = 0
+  const controller = new Controller({ storage: {
+    get: async key => stored.get(key), set: async (key, value) => { if (fail) throw new Error('Storage full'); stored.set(key, structuredClone(value)) }
+  }, platform: { state: async () => ({}), stop: async () => { throw new Error('The browser must stay open') }, stopMocking: async () => { stopMocking++ } } })
+  const first = await controller.dispatch('state')
+  fail = true
+  await assert.rejects(controller.dispatch('application-follow', { url: 'https://second.example.test/', revision: first.revision }), /Storage full/)
+  assert.equal((await controller.dispatch('state')).applicationId, first.applicationId)
+  fail = false
+  const second = await controller.dispatch('application-follow', { url: 'https://second.example.test/', revision: first.revision })
+  assert.notEqual(second.applicationId, first.applicationId)
+  assert.equal(second.applicationNotice.origin, 'https://second.example.test')
+  assert.equal(second.activity.length, 0)
+  assert.equal(stopMocking, 2)
+  const unchanged = await controller.dispatch('application-follow', { url: 'https://second.example.test/next', revision: second.revision })
+  assert.equal(unchanged.revision, second.revision)
+  assert.equal(stopMocking, 2)
+  const original = await controller.dispatch('application-follow', { url: 'https://first.example.test/', revision: second.revision })
+  assert.equal(original.applicationId, first.applicationId)
+  assert.deepEqual(original.config, first.config)
+})
+
+
+test('claiming a mapped site retains a running session and respects a manually selected profile', async () => {
+  const workspace = readApplications(starterConfig())
+  const origin = workspace.applications[0].config.environments[0].baseUrls[0]
+  const stored = new Map([[STORAGE_KEY, workspace]])
+  const controller = new Controller({ storage: { get: async key => stored.get(key), set: async (key, value) => stored.set(key, value) },
+    platform: { state: async () => ({}), stop: async () => { throw new Error('Do not close the browser') }, stopMocking: async () => { throw new Error('Do not stop the current mock') } } })
+  const initial = await controller.dispatch('state')
+  const claimed = await controller.dispatch('application-follow', { url: origin, revision: initial.revision })
+  assert.equal(claimed.applicationId, initial.applicationId)
+  assert.equal(claimed.activityVersion, initial.activityVersion)
+  const duplicate = structuredClone(workspace.applications[0])
+  duplicate.id = 'manual'
+  duplicate.url = origin
+  workspace.applications.push(duplicate)
+  workspace.activeApplicationId = duplicate.id
+  assert.equal(followApplication(workspace, origin).changed, false)
+  assert.equal(workspace.activeApplicationId, 'manual')
+})
+
+
+test('manual profiles without a launch URL bind to the current site without sharing requests or rules', async () => {
+  const stored = new Map()
+  const controller = new Controller({ storage: { get: async key => stored.get(key), set: async (key, value) => stored.set(key, structuredClone(value)) },
+    platform: { state: async () => ({}), stop: async () => {} } })
+  const initial = await controller.dispatch('state')
+  const created = await controller.dispatch('application-create', { name: 'Alternative config', currentUrl: 'https://first.example.test/dashboard?token=private', revision: initial.revision })
+  assert.equal(created.applications.find(app => app.id === created.applicationId).url, 'https://first.example.test/dashboard')
+  assert.equal(created.config.scenarios[0].rules.length, 0)
+  assert.deepEqual(created.activity, [])
+  const followed = await controller.dispatch('application-follow', { url: 'https://first.example.test/home', revision: created.revision })
+  assert.equal(followed.applicationId, created.applicationId)
+  assert.equal(followed.applications.length, 2)
 })

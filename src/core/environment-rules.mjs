@@ -6,6 +6,7 @@
  * @param {{ groupIntoActive?: boolean }} options Whether new origins join the active Env.
  */
 export function mapRuleEnvironment(config, rule, { groupIntoActive = true } = {}) {
+  if (rule.matchMode === 'exact') return rule;
   if (!/^https?:\/\//.test(rule.url)) return rule;
   const source = /^(https?:\/\/[^/?]+)(.*)$/.exec(rule.url);
   if (!source || source[1].includes('*')) return rule;

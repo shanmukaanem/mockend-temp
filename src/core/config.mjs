@@ -38,7 +38,7 @@ export function validateHeaders(headers, path) {
 }
 
 function validateRule(rule, path, environments) {
-  shape(rule, ['id', 'name', 'enabled', 'method', 'url', 'resource', 'requestBody', 'requestBodyMode', 'parameters', 'exactUrl', 'endpointOnly', 'site', 'environmentScope', 'environmentIds', 'response'], path);
+  shape(rule, ['id', 'name', 'enabled', 'method', 'url', 'resource', 'requestBody', 'requestBodyMode', 'parameters', 'exactUrl', 'endpointOnly', 'matchMode', 'endpointPath', 'endpointOrigin', 'site', 'environmentScope', 'environmentIds', 'response'], path);
   requireThat(rule.environmentScope === undefined || ['original', 'active', 'all', 'selected'].includes(rule.environmentScope), path, 'needs a valid environment scope.');
   if (rule.environmentScope && rule.environmentScope !== 'original') {
     requireThat(/^(?:https?|\*):\/\/[^/?]+/.test(rule.url) || /^\/(?!\/)/.test(rule.url), path, 'needs an endpoint path or source URL for environment matching.');
@@ -53,6 +53,15 @@ function validateRule(rule, path, environments) {
   requireThat(rule.method === '*' || (typeof rule.method === 'string' && token.test(rule.method) && rule.method === rule.method.toUpperCase()), path, 'needs an uppercase HTTP method or *.');
   requireThat(typeof rule.url === 'string' && rule.url.length <= 2048 && !/\s|#/.test(rule.url) &&
     (rule.url === '*' || /^(https?|\*):\/\/[^/]+/.test(rule.url) || (/^\/(?!\/)/.test(rule.url) && ['active', 'all', 'selected'].includes(rule.environmentScope))), path, 'needs an Env endpoint path or HTTP(S) URL without spaces or fragments.');
+  requireThat(rule.matchMode === undefined || ['endpoint', 'path', 'exact', 'pattern'].includes(rule.matchMode), path, 'needs a supported matching mode.');
+  requireThat(rule.matchMode === undefined || (!rule.exactUrl && !rule.endpointOnly), path, 'cannot combine new and legacy matching modes.');
+  requireThat(!rule.matchMode || rule.matchMode === 'pattern' || !rule.url.includes('*'), path, 'uses wildcards only with Pattern matching.');
+  requireThat(rule.matchMode !== 'exact' || /^https?:\/\//.test(rule.url), path, 'needs a complete HTTP(S) URL for Exact URL matching.');
+  if (rule.endpointOrigin !== undefined) {
+    let origin; try { origin = new URL(rule.endpointOrigin); } catch { /* Report below. */ }
+    requireThat(rule.matchMode === 'endpoint' && rule.endpointPath && origin && /^https?:$/.test(origin.protocol) && origin.origin === rule.endpointOrigin, path, 'needs a canonical endpoint source origin.');
+  }
+  requireThat(rule.endpointPath === undefined || (rule.matchMode === 'endpoint' && typeof rule.endpointPath === 'string' && /^\/(?!\/)/.test(rule.endpointPath) && !/[?*#\s]/.test(rule.endpointPath) && rule.endpointPath.length <= 2048), path, 'needs a concrete endpoint source path.');
   requireThat(rule.exactUrl === undefined || typeof rule.exactUrl === 'boolean', path, 'needs a boolean exact URL flag.');
   requireThat(rule.endpointOnly === undefined || (typeof rule.endpointOnly === 'boolean' && !(rule.endpointOnly && rule.exactUrl)), path, 'needs one URL matching mode.');
   if (rule.parameters !== undefined) {
@@ -78,7 +87,7 @@ function validateRule(rule, path, environments) {
   requireThat(['api', 'any', ...RESOURCE_TYPES].includes(rule.resource), path, 'needs a supported request type.');
   const response = rule.response;
   const responsePath = `${path}.response`;
-  shape(response, ['kind', 'status', 'statusText', 'headers', 'body', 'error', 'delayMs', 'cors'], responsePath);
+  shape(response, ['kind', 'format', 'status', 'statusText', 'headers', 'body', 'error', 'delayMs', 'cors'], responsePath);
   requireThat(inRange(response.delayMs, 0, 30000), responsePath, 'needs a delay from 0 to 30,000 ms.');
   if (response.kind === 'error') {
     requireThat(NETWORK_ERRORS.includes(response.error), responsePath, 'needs a supported network error.');
@@ -86,6 +95,8 @@ function validateRule(rule, path, environments) {
     return;
   }
   requireThat(['json', 'text'].includes(response.kind) && !Object.hasOwn(response, 'error'), responsePath, 'needs kind “json”, “text”, or “error”.');
+  requireThat(response.format === undefined || (['json', 'text', 'html', 'empty'].includes(response.format) && response.kind === (response.format === 'json' ? 'json' : 'text')), responsePath, 'needs a compatible response format.');
+  requireThat(response.format !== 'empty' || !Object.hasOwn(response, 'body') || response.body === '', responsePath, 'needs an empty body for Empty format.');
   requireThat(inRange(response.status, 100, 999), responsePath, 'needs an HTTP status from 100 to 999.');
   requireThat(response.statusText === undefined || (typeof response.statusText === 'string' && /^[\x20-\x7e]{1,100}$/.test(response.statusText) && response.statusText.trim().length > 0), responsePath, 'needs a status name of 1–100 printable ASCII characters.');
   requireThat(typeof response.cors === 'boolean', responsePath, 'needs a CORS flag.');
@@ -132,11 +143,26 @@ export function validateConfig(config) {
     'Configuration', 'must contain 1–50 flows.');
   for (const [index, scenario] of value.scenarios.entries()) {
     const path = `Flow ${index + 1}`;
-    shape(scenario, ['id', 'name', 'rules'], path);
+    shape(scenario, ['id', 'name', 'rules', 'variants', 'activeVariantId'], path);
     requireThat(id(scenario.id) && label(scenario.name), path, 'needs a valid ID and name of 1–100 characters.');
     requireThat(Array.isArray(scenario.rules) && scenario.rules.length <= 200, path, 'may contain up to 200 rules.');
     scenario.rules.forEach((rule, ruleIndex) => validateRule(rule, `${path}, rule ${ruleIndex + 1}`, environments));
     uniqueIds(scenario.rules, `${path} rules`);
+    if (scenario.variants !== undefined) {
+      requireThat(Array.isArray(scenario.variants) && scenario.variants.length > 0 && scenario.variants.length <= 50, path, 'supports 1-50 response scenarios.');
+      for (const variant of scenario.variants) {
+        shape(variant, ['id', 'name', 'overrides'], path + ' scenario');
+        requireThat(id(variant.id) && label(variant.name) && plain(variant.overrides), path, 'needs valid scenario IDs, names, and overrides.');
+        for (const [ruleId, override] of Object.entries(variant.overrides)) {
+          const rule = scenario.rules.find(rule => rule.id === ruleId);
+          requireThat(Boolean(rule), path, 'has an override for a missing rule.');
+          shape(override, ['response', 'enabled'], path + ' override');
+          validateRule({ ...rule, ...override }, `${path}, scenario ${variant.name}`, environments);
+        }
+      }
+      uniqueIds(scenario.variants, path + ' scenarios');
+      requireThat(scenario.variants.some(variant => variant.id === scenario.activeVariantId), path, 'needs an existing active response scenario.');
+    } else requireThat(scenario.activeVariantId === undefined, path, 'needs scenarios before selecting one.');
   }
   uniqueIds(value.scenarios, 'Flows');
   requireThat(value.scenarios.some(scenario => scenario.id === value.activeScenarioId), 'Configuration', 'needs an existing active flow.');

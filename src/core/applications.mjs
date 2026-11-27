@@ -1,3 +1,4 @@
+import { pruneResponseScenarios } from './variants.mjs'
 import { MAX_CONFIG_BYTES, emptyConfig, validateConfig } from './config.mjs'
 import { mapConfigEnvironments } from './environment-rules.mjs'
 
@@ -31,7 +32,12 @@ export function readApplications(value) {
       if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) throw new Error('App URLs must use HTTP(S) without credentials.');
       url = parsed.href
     }
-    return { id: app.id, name: app.name.trim(), ...(url && { url }), config: validateConfig(app.config) }
+    const origins = [...new Set(app.origins ?? [])]
+    if (!Array.isArray(app.origins ?? []) || origins.length > 100 || origins.some(origin => {
+      try { const parsed = new URL(origin); return !/^https?:$/.test(parsed.protocol) || parsed.origin !== origin }
+      catch { return true }
+    })) throw new Error('App origins must be HTTP(S) origins without paths.')
+    return { id: app.id, name: app.name.trim(), ...(url && { url }), ...(origins.length && { origins }), config: validateConfig(app.config) }
   })
   if (!ids.has(value.activeApplicationId)) throw new Error('Select an existing app.');
   return { version: 2, activeApplicationId: value.activeApplicationId, applications }
@@ -44,6 +50,7 @@ export function mergeApplications(workspace, sourceId, targetId) {
   const target = workspace.applications.find(app => app.id === targetId)
   if (!source || !target) throw new Error('Choose existing apps.');
   const ids = new Map()
+  target.origins = [...new Set([...applicationOrigins(target), ...applicationOrigins(source)])]
   target.config.environments ??= []
   for (const env of source.config.environments ?? []) {
     const copy = structuredClone(env)
@@ -81,8 +88,40 @@ export function splitApplication(workspace, { name, environmentIds }) {
       rule.environmentIds = rule.environmentIds.filter(id => ids.has(id))
       return rule.environmentIds.length > 0
     })
+    for (const flow of config.scenarios) pruneResponseScenarios(flow)
   }
   app.url = app.config.environments[0].baseUrls[0]
   workspace.applications.push(app)
   workspace.activeApplicationId = app.id
+}
+
+/** Return the launch origins assigned to an app, including sites retained by a merge. */
+export function applicationOrigins(app) {
+  return [...new Set([...(app.url ? [new URL(app.url).origin] : []), ...(app.origins ?? [])])]
+}
+
+/** Follow a site's origin without creating a profile for each page or discarding existing mocks. */
+export function followApplication(workspace, url) {
+  const site = new URL(url)
+  if (!/^https?:$/.test(site.protocol) || site.username || site.password) throw new Error('Choose an HTTP(S) app URL without credentials.')
+  const current = workspace.applications.find(app => app.id === workspace.activeApplicationId)
+  const assigned = applicationOrigins(current).includes(site.origin) ? current : workspace.applications.find(app => applicationOrigins(app).includes(site.origin))
+  const hasOrigin = app => app.config.environments?.some(env => env.baseUrls.includes(site.origin))
+  const mapped = !assigned && (hasOrigin(current) ? current : workspace.applications.find(hasOrigin))
+  const pristine = !current.url && !current.origins?.length && !current.config.environments?.length && current.config.scenarios.every(flow => !flow.rules.length)
+  let app = assigned || mapped || (pristine ? current : undefined)
+  let created = false
+  if (!app) {
+    if (workspace.applications.length >= 30) throw new Error('Merge existing apps before adding another site. The workspace supports 30 apps.')
+    app = { id: crypto.randomUUID(), name: site.host.slice(0, 100), config: emptyConfig() }
+    workspace.applications.push(app)
+    created = true
+  }
+  const changed = app.id !== workspace.activeApplicationId || !applicationOrigins(app).includes(site.origin)
+  if (changed) {
+    app.url ??= (site.origin + site.pathname).slice(0, 2048)
+    app.origins = [...new Set([...applicationOrigins(app), site.origin])]
+    workspace.activeApplicationId = app.id
+  }
+  return { changed, created, name: app.name, origin: site.origin }
 }

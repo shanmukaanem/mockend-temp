@@ -38,6 +38,15 @@ export function prepareSelect(select) {
     button.append(document.createElement('selectedcontent'))
     select.prepend(button)
   }
+  for (const option of select.options) {
+    option.dataset.clipTooltip = ''
+    if (!option.querySelector('.select-option-label')) {
+      const label = document.createElement('span')
+      label.className = 'select-option-label'
+      label.textContent = option.textContent
+      option.replaceChildren(label)
+    }
+  }
   const button = select.querySelector('button')
   if (button) { button.setAttribute('aria-hidden', 'true'); button.tabIndex = -1; button.inert = true }
 }
@@ -46,6 +55,7 @@ export function prepareSelect(select) {
 export function replaceSelectOptions(select, ...options) {
   prepareSelect(select)
   for (const child of [...select.children]) if (child.tagName !== 'BUTTON') child.remove()
+  for (const option of options) option.dataset.clipTooltip = ''
   select.append(...options)
 }
 

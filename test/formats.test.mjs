@@ -85,3 +85,35 @@ test('third-party OpenAPI JSON imports inline examples and rejects unresolved re
   spec.paths['/orders/{id}'].get.responses[200] = { $ref: '#/components/responses/Order' }
   assert.throws(() => readApiSpec(spec), /inline HTTP response examples/)
 })
+
+
+test('HTML and Empty formats preserve HTTP content and round-trip through specs and mocks', () => {
+  const { config, scenario, rule } = fixture()
+  rule.response = { kind: 'text', format: 'html', status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' }, delayMs: 0, cors: false, body: '<h1>QA</h1>' }
+  const spec = scenarioSpec(scenario, config)
+  assert.equal(spec.paths['/api/cart'].get.responses[200].content['text/html'].examples[rule.id].value, '<h1>QA</h1>')
+  assert.equal(readApiSpec(spec).rules[0].response.format, 'html')
+  assert.equal(readPostmanMock(postmanMockScript(scenario, config)).rules[0].response.body, '<h1>QA</h1>')
+  rule.response = { kind: 'text', format: 'empty', status: 200, headers: {}, delayMs: 0, cors: false, body: '' }
+  assert.doesNotThrow(() => validateConfig(config))
+  rule.response.body = 'unexpected'
+  assert.throws(() => validateConfig(config), /empty body/)
+})
+
+
+test('portable endpoint mocks preserve collision protection after rebasing to the mock server', async t => {
+  const { config, scenario, rule } = fixture()
+  rule.matchMode = 'endpoint'; rule.endpointPath = '/api/cart'; rule.endpointOrigin = new URL(rule.url).origin
+  delete rule.exactUrl; delete rule.endpointOnly
+  rule.response.status = 200; delete rule.response.statusText
+  const module = { exports: {} }
+  runInNewContext(postmanMockScript(scenario, config), { module, require: createRequire(import.meta.url), URL, TextEncoder, Buffer })
+  const server = module.exports
+  t.after(() => { server.closeAllConnections(); server.close() })
+  server.listen(0, '127.0.0.1'); await once(server, 'listening')
+  const base = `http://127.0.0.1:${server.address().port}`
+  assert.equal((await fetch(base + '/api/cart')).status, 200)
+  const conflict = await fetch(base + '/unrelated/cart')
+  assert.equal(conflict.status, 404)
+  assert.match((await conflict.json()).error, /Endpoint conflict/)
+})

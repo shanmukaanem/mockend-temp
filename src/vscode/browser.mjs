@@ -81,6 +81,7 @@ export function createIntegratedBrowser(vscode, publish = () => {}) {
   }
 
   const platform = {
+    refresh() { return active?.engine?.banner.update(''); },
     async state() {
       const available = tab(active?.ready ? active : null);
       return { mode: 'vscode', available, active: active?.ready && active.engine ? available : null, notice };

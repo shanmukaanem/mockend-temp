@@ -64,8 +64,63 @@ export function ruleBelongsToSite(rule, hostname) {
   return globMatches(host.toLowerCase(), hostname);
 }
 
-/** Rebase only the origin; ingress, endpoint, query and wildcard semantics stay intact. */
+/** Resolve explicit matching modes without changing legacy endpointOnly (full-path) rules. */
+export function matchingMode(rule) {
+  return rule.matchMode ?? (rule.endpointOnly ? 'path' : rule.exactUrl ? 'exact' : 'pattern');
+}
+
+/** Return the final non-empty path segment, preserving encoded characters. */
+export function endpointName(value) {
+  const path = new URL(value, 'https://mockend.invalid').pathname;
+  return path.split('/').filter(Boolean).at(-1) ?? '';
+}
+
+/**
+ * Find ambiguous APIs within a selected Env using configured routes and observed requests.
+ * Source-Env endpointPath anchors prevent an unrelated path from being mocked on its first visit.
+ * @param {object} rule Candidate endpoint rule.
+ * @param {object} config App configuration.
+ * @param {{url: string, method: string}[]} routes Captured or currently observed API routes.
+ * @param {object[]} [configured] Known app routes, including disabled mocks.
+ * @returns {string[]} Conflicting concrete URLs, or an empty array.
+ */
+export function endpointConflicts(rule, config = {}, routes = [], configured = config.scenarios?.flatMap(flow => flow.rules) ?? []) {
+  if (matchingMode(rule) !== 'endpoint') return [];
+  const targets = ruleUrls(rule, config);
+  const origins = new Set(targets.map(url => new URL(url).origin));
+  const name = endpointName(rule.url);
+  const buckets = (config.environments ?? []).map(env => env.baseUrls.filter(base => origins.has(base))).filter(bases => bases.length);
+  if (!buckets.length) buckets.push([...origins]);
+  const compatible = method => rule.method === '*' || method === '*' || rule.method === method;
+  for (const bases of buckets) {
+    const found = new Set(); const observed = new Set(); const paths = new Set();
+    const add = (url, actual = false) => {
+      try {
+        const parsed = new URL(url);
+        if (!bases.includes(parsed.origin) || endpointName(url) !== name || parsed.pathname.includes('*')) return;
+        paths.add(parsed.pathname); found.add(parsed.origin + parsed.pathname);
+        if (actual) observed.add(parsed.origin);
+      } catch { /* Wildcard authorities are not concrete APIs. */ }
+    };
+    if (rule.endpointPath && (!rule.endpointOrigin || bases.includes(rule.endpointOrigin))) {
+      if (rule.endpointOrigin) add(rule.endpointOrigin + rule.endpointPath, true);
+      else for (const base of bases) add(base + rule.endpointPath);
+    }
+    for (const candidate of configured) {
+      if (candidate.id === rule.id || !compatible(candidate.method)) continue;
+      if (rule.resource !== 'any' && candidate.resource !== 'any' && rule.resource !== candidate.resource && !(['api', 'Fetch', 'XHR'].includes(rule.resource) && ['api', 'Fetch', 'XHR'].includes(candidate.resource))) continue;
+      if (matchingMode(candidate) === 'endpoint' && !candidate.endpointPath) continue;
+      for (const url of ruleUrls(candidate, config)) add(url);
+    }
+    for (const route of routes) if (compatible(route.method)) add(route.url, true);
+    if (paths.size > 1 || observed.size > 1) return [...found];
+  }
+  return [];
+}
+
+/** Resolve Env origins while keeping explicit Exact URL rules absolute. */
 export function ruleUrls(rule, config = {}) {
+  if (rule.matchMode === 'exact') return [rule.url];
   const scope = rule.environmentScope ?? 'original';
   const relative = rule.url.startsWith('/');
   if (relative && scope === 'active' && !config.settings?.environmentId) return [];
@@ -83,12 +138,14 @@ function baseMatches(rule, request, resourceType, method, config) {
   if (rule.resource !== 'any' && rule.resource !== resourceType &&
       !(rule.resource === 'api' && (apiTypes.has(resourceType) || resourceType === 'Preflight'))) return false;
   return ruleUrls(rule, config).some(url => {
-    if (rule.endpointOnly) {
+    const mode = matchingMode(rule);
+    if (mode === 'path' || mode === 'endpoint') {
       const expected = new URL(url);
       const actual = new URL(request.url);
-      return expected.origin === actual.origin && expected.pathname === actual.pathname;
+      return expected.origin === actual.origin && (mode === 'endpoint' ? endpointName(url) === endpointName(request.url) : expected.pathname === actual.pathname);
     }
-    return rule.exactUrl ? normalizedQueryUrl(url) === normalizedQueryUrl(request.url) : globMatches(url, request.url);
+    if (rule.matchMode === 'pattern' && !url.includes('?')) { const actual = new URL(request.url); return globMatches(url, actual.origin + actual.pathname); }
+    return matchingMode(rule) === 'exact' ? normalizedQueryUrl(url) === normalizedQueryUrl(request.url) : globMatches(url, request.url);
   });
 }
 
@@ -101,7 +158,12 @@ function parameterGroups(parameters = []) {
   return groups;
 }
 
-export async function selectRule(rules, event, readPostData, config = {}) {
+/**
+ * Select a matching rule or report an ambiguous Endpoint without applying a mock.
+ * Callers must forward conflicts and surface their warning, rather than fulfill them.
+ * @returns {Promise<{rule: object, preflight: boolean} | {conflict: string, urls: string[]} | null>}
+ */
+export async function selectRule(rules, event, readPostData, config = {}, routes = []) {
   const request = event.request;
   if (!/^https?:\/\//.test(request.url)) return null;
   const preflightMethod = request.method === 'OPTIONS' && headerValue(request.headers, 'access-control-request-method');
@@ -122,6 +184,11 @@ export async function selectRule(rules, event, readPostData, config = {}) {
     }
     return body;
   };
+  const result = (rule, preflight = false) => {
+    if (matchingMode(rule) !== 'endpoint') return { rule, preflight };
+    const conflicts = endpointConflicts(rule, config, [...routes, { url: request.url, method: preflightMethod || request.method }], config.scenarios ? undefined : rules);
+    return conflicts.length ? { conflict: `Endpoint conflict: ${endpointName(rule.url)}. Use Full path or Exact URL to distinguish these APIs.`, urls: conflicts } : { rule, preflight };
+  };
   for (const rule of rules) {
     if (!baseMatches(rule, request, resourceType, request.method, config)) continue;
     // Generic wildcard rules do not consume browser preflights.
@@ -130,10 +197,10 @@ export async function selectRule(rules, event, readPostData, config = {}) {
     for (const group of parameterGroups(rule.parameters)) {
       if (!queryMatches(group)) continue;
       const conditions = group.filter(({ source }) => source === 'body');
-      if (!conditions.length) return { rule, preflight: false };
+      if (!conditions.length) return result(rule);
       const payload = await readBody();
       if (conditions.every(({ key, value }) => jsonMatches(value, bodyParameter(payload, key), true))) {
-        return { rule, preflight: false };
+        return result(rule);
       }
     }
   }
@@ -141,7 +208,7 @@ export async function selectRule(rules, event, readPostData, config = {}) {
     const rule = rules.find(candidate => candidate.response.cors && parameterGroups(candidate.parameters).some(queryMatches) && (apiTypes.has(candidate.resource)
       ? baseMatches(candidate, request, candidate.resource, preflightMethod, config)
       : baseMatches(candidate, request, resourceType, preflightMethod, config)));
-    if (rule) return { rule, preflight: true };
+    if (rule) return result(rule, true);
   }
   return null;
 }
@@ -196,7 +263,7 @@ export function responseFor(match, request) {
 export function portableMatcherSource() {
   return [
     `const apiTypes = new Set(${JSON.stringify([...apiTypes])});`,
-    ...[globMatches, jsonMatches, headerValue, normalizedQueryUrl, bodyParameter, ruleUrls, baseMatches,
+    ...[matchingMode, endpointName, endpointConflicts, globMatches, jsonMatches, headerValue, normalizedQueryUrl, bodyParameter, ruleUrls, baseMatches,
       parameterGroups, selectRule, responseFor].map(fn => fn.toString())
   ].join('\n\n');
 }

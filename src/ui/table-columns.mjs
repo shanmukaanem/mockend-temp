@@ -32,13 +32,20 @@ export function mountTableColumns(table, key, columns) {
   function updateMinimums() {
     headings.forEach((heading, index) => {
       const header = heading.querySelector('[data-sort], [data-rule-sort]')
-      if (!header || columns[index].min === columns[index].max) return
+      if (columns[index].min === columns[index].max) return
+      if (!header) {
+        const style = getComputedStyle(heading)
+        minimums[index] = Math.max(columns[index].min, Math.ceil(measure(titles[index], style) + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 8))
+        return
+      }
       const style = getComputedStyle(header)
       const cell = getComputedStyle(heading)
       const icon = getComputedStyle(header.querySelector('span'))
       const padding = [style.paddingLeft, style.paddingRight, cell.paddingLeft, cell.paddingRight].reduce((sum, value) => sum + (parseFloat(value) || 0), 0)
       const arrow = Math.max(parseFloat(icon.width) || 0, measure('\u2191', icon), measure('\u2193', icon))
-      minimums[index] = Math.max(columns[index].min, Math.ceil(measure(titles[index], style) + arrow + (parseFloat(icon.marginInlineStart) || 0) + padding + 2))
+      const switchControl = heading.querySelector('.enabled-heading > input');
+      const switchWidth = switchControl ? parseFloat(getComputedStyle(switchControl).width) + 4 : 0;
+      minimums[index] = Math.max(columns[index].min, Math.ceil(switchWidth + measure(titles[index], style) + arrow + (parseFloat(icon.marginInlineStart) || 0) + padding + 2))
     })
   }
   updateMinimums()
@@ -68,6 +75,7 @@ export function mountTableColumns(table, key, columns) {
     const width = Math.round(Math.max(min, Math.min(limit(index), value)))
     widths[index] = width
     cols[index].style.width = `${width}px`
+    table.style.setProperty(`--column-${index}`, `${width}px`)
     const handle = headings[index].querySelector('.column-resize')
     handle?.setAttribute('aria-valuenow', String(width))
     handle?.setAttribute('aria-valuemax', String(limit(index)))

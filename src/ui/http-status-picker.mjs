@@ -31,6 +31,7 @@ export function mountHttpStatusPicker(control, tray, codeInput, nameInput, chang
     option.tabIndex = -1
     option.setAttribute('role', 'option')
     option.textContent = caption(code, name)
+    option.dataset.clipTooltip = ''
     option.addEventListener('click', () => choose(code, name))
     choices.set(id, option)
     list.append(option)

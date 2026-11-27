@@ -39,7 +39,7 @@ export function scenarioSpec(scenario, config) {
     if (!operation.servers.some(server => server.url === url.origin)) operation.servers.push({ url: url.origin })
     const response = operation.responses[rule.response.status] ??= { description: rule.response.statusText || `HTTP ${rule.response.status}` }
     if (Object.hasOwn(rule.response, 'body')) {
-      const mime = rule.response.kind === 'json' ? 'application/json' : 'text/plain'
+      const mime = Object.entries(rule.response.headers).find(([name]) => name.toLowerCase() === 'content-type')?.[1].split(';')[0] || (rule.response.format === 'html' ? 'text/html' : rule.response.kind === 'json' ? 'application/json' : 'text/plain')
       response.content ??= {}
       const content = response.content[mime] ??= { examples: {} }
       content.examples[rule.id] = { summary: rule.name, value: rule.response.body }

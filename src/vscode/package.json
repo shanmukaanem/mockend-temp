@@ -4,7 +4,7 @@
   "description": "Test browser behavior with reusable JSON API mocks in the VS Code Integrated Browser.",
   "publisher": "mockend",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "0.0.2",
+  "version": "0.0.10",
   "engines": {
     "vscode": "^1.112.0"
   },

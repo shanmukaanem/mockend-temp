@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — Mockend
 
-Last updated: 2026-11-26. Release: 0.0.2. Submission status: draft, not published.
+Last updated: 2026-11-27. Release: 0.0.10. Submission status: draft, not published.
 
 ## Store listing
 

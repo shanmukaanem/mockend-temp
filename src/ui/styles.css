@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   font: 13px/1.45 Inter, "Segoe UI", system-ui, sans-serif;
   --paper: #f7f1e4;
   --surface: #fffaf0;
@@ -527,7 +527,7 @@ dialog > form:not(.dialog-foot) { max-height: calc(100dvh / var(--panel-zoom) - 
 @supports (appearance: base-select) {
   #rule-form select { gap: 3px; padding-inline-end: 5px; }
   #rule-form select::picker-icon { font-size: 9px; }
-  #rule-form selectedcontent { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+  #rule-form selectedcontent { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   #rule-form select::picker(select) {
     min-inline-size: anchor-size(width);
     inline-size: max-content;

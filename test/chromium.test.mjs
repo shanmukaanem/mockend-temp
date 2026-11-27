@@ -95,6 +95,8 @@ test('unpacked extension applies real browser mocks and supports the rule editor
   await panel.getByRole('button', { name: 'Save', exact: true }).click();
   await panel.getByRole('button', { name: 'Add rule' }).click();
   await panel.getByLabel('Rule name').fill('Unexpected Unicode');
+  await panel.locator('.route-advanced > summary').click();
+  await panel.getByRole('combobox', { name: 'URL matching', exact: true }).selectOption('pattern');
   await panel.getByLabel('Request URL').fill('http://127.0.0.1:4319/api/cart*');
   await panel.locator('#response-status-toggle').click();
   await panel.getByRole('searchbox', { name: 'Search or add HTTP status' }).fill('503 QA Maintenance');
@@ -114,6 +116,68 @@ test('unpacked extension applies real browser mocks and supports the rule editor
   await panel.getByText('Unexpected Unicode').waitFor();
   assert.equal(await panel.locator('#scenario-name').textContent(), 'Custom QA');
   assert.deepEqual(errors, []);
+});
+
+test('Record pauses and resumes real capture independently of mocking in both themes', { timeout: 30000 }, async t => {
+  const server = createServer((request, response) => {
+    response.writeHead(200, { 'Content-Type': request.url === '/' ? 'text/html' : 'application/json' });
+    response.end(request.url === '/' ? '<title>Recording fixture</title>' : '{"ok":true}');
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => server.close());
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const profile = await mkdtemp(join(tmpdir(), 'mockend-record-toggle-'));
+  let context;
+  t.after(async () => { await context?.close(); await rm(profile, { recursive: true, force: true }); });
+  context = await chromium.launchPersistentContext(profile, {
+    channel: 'chromium', ignoreDefaultArgs: ['--disable-extensions'], headless: true,
+    ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`]
+  });
+  const [worker] = context.serviceWorkers().length ? context.serviceWorkers() : [await context.waitForEvent('serviceworker')];
+  const extensionId = new URL(worker.url()).hostname;
+  const app = await context.newPage(); await app.goto(origin);
+  const tabId = await worker.evaluate(async address => (await chrome.tabs.query({})).find(tab => tab.url === address + '/').id, origin);
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/panel.html?tab=${tabId}`);
+  const record = panel.locator('#record-toggle'); const mocking = panel.locator('#toggle');
+  const paused = () => panel.getByRole('button', { name: 'Start recording', exact: true }).waitFor();
+  const recording = () => panel.getByRole('button', { name: 'Stop recording', exact: true }).waitFor();
+  const fetchApi = path => app.evaluate(async url => (await fetch(url)).json(), path);
+  await recording(); await record.click(); await paused();
+  await panel.locator('#clear-requests').evaluate(button => { if (!button.disabled) button.click(); });
+  await panel.waitForFunction(() => document.querySelector('#request-count').textContent === '(0)');
+  await fetchApi('/api/paused');
+  await record.click(); await recording();
+  await fetchApi('/api/recorded');
+  await panel.getByRole('button', { name: 'View GET /api/recorded' }).waitFor();
+  assert.equal(await panel.getByRole('button', { name: 'View GET /api/paused' }).count(), 0);
+  await mocking.click(); await panel.getByRole('button', { name: 'Stop mocking', exact: true }).waitFor();
+  await record.click(); await paused(); await fetchApi('/api/paused-while-mocking');
+  await record.click(); await recording(); await fetchApi('/api/resumed');
+  await panel.getByRole('button', { name: 'View GET /api/resumed' }).waitFor();
+  assert.equal(await panel.getByRole('button', { name: 'View GET /api/paused-while-mocking' }).count(), 0);
+  assert.equal(await mocking.getAttribute('aria-pressed'), 'true');
+  assert.equal(await record.getAttribute('aria-pressed'), 'true');
+  await panel.emulateMedia({ reducedMotion: 'reduce' });
+  await panel.mouse.move(0, 0);
+  for (const scheme of ['dark', 'light']) {
+    await panel.evaluate(value => {
+      const picker = document.getElementById('color-scheme'); picker.value = value; picker.dispatchEvent(new Event('change'));
+    }, scheme);
+    await panel.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const styles = await panel.locator('.activity-control').evaluateAll(buttons => buttons.map(button => {
+      const style = getComputedStyle(button); const indicator = button.querySelector('.activity-control-switch');
+      return { width: button.offsetWidth, height: button.offsetHeight, background: style.backgroundColor,
+        radius: style.borderRadius, knob: getComputedStyle(indicator, '::before').transform };
+    }));
+    assert.deepEqual(styles[0], styles[1], 'Record and Mocking share button and switch geometry');
+    if (scheme === 'dark') assert.equal(await panel.locator('body').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(0, 0, 0)');
+    await panel.setViewportSize({ width: 320, height: 760 });
+    assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await panel.screenshot({ path: resolve(import.meta.dirname, `../test-results/record-toggle-${scheme}.png`), animations: 'allow' });
+  }
+  await record.click(); await paused(); await mocking.click();
 });
 
 test('cross-origin POST is fulfilled by Chromium before reaching the real API', { timeout: 30000 }, async t => {
@@ -175,7 +239,7 @@ test('cross-origin POST is fulfilled by Chromium before reaching the real API', 
   assert.equal(apiHits, 0);
 });
 
-test('Chromium interception serves a matching API request without contacting the origin', { timeout: 15000 }, async t => {
+test('Chromium interception serves a matching API request without contacting the origin', { timeout: 30000 }, async t => {
   let originHits = 0;
   const server = createServer((request, response) => {
     if (request.url.startsWith('/api/missing')) {
@@ -224,6 +288,19 @@ test('Chromium interception serves a matching API request without contacting the
     });
   }
   await interceptor.start();
+  const banner = app.locator(`[id="${interceptor.banner.id}"]`).getByRole('status');
+  assert.equal(await app.locator(`[id="${interceptor.banner.id}"]`).count(), 1, 'Flow indicator mounts on the existing page');
+  await banner.filter({ hasText: config.scenarios[0].name }).waitFor({ timeout: 5000 });
+  const originalName = config.scenarios[0].name;
+  config.scenarios[0].name = 'QA <script>flow</script>';
+  await interceptor.banner.update();
+  assert.equal(await banner.textContent(), 'Mockend \u00b7 QA <script>flow</script>');
+  assert.equal(await app.locator(`[id="${interceptor.banner.id}"] script`).count(), 0);
+  await app.reload();
+  assert.ok(await app.evaluate(id => Boolean(document.getElementById(id)), interceptor.banner.id), JSON.stringify(await app.evaluate(() => ({ ready: document.readyState, hooks: Object.keys(globalThis).filter(key => key.startsWith('mockend-flow-')) }))));
+  await banner.filter({ hasText: 'QA <script>flow</script>' }).waitFor({ timeout: 5000 });
+  config.scenarios[0].name = originalName;
+  await interceptor.banner.update();
 
   const callApi = mode => app.evaluate(async mode => {
     const response = await fetch('/api/checkout?mode=' + mode, {
@@ -271,5 +348,22 @@ test('Chromium interception serves a matching API request without contacting the
   assert.equal(originHits, 2);
   assert.equal(await status('/api/missing?sort=-created_date&limit=11'), 404);
   assert.equal(originHits, 3);
+  const { addResponseScenario, setRuleState } = await import('../src/core/variants.mjs');
+  const flow = config.scenarios[0];
+  const serverError = addResponseScenario(flow, 'Server error');
+  setRuleState(flow, rule.id, { response: { ...rule.response, status: 500, body: { error: 'scenario failure' }, delayMs: 80 } });
+  const started = Date.now();
+  assert.deepEqual(await callApi('qa'), [500, { error: 'scenario failure' }]);
+  assert.ok(Date.now() - started >= 60);
+  assert.equal(rule.response.status, 422);
+  await interceptor.banner.update();
+  await banner.filter({ hasText: 'Server error' }).waitFor();
+  setRuleState(flow, rule.id, { enabled: false });
+  assert.deepEqual(await callApi('qa'), [200, { from: 'origin' }]);
+  assert.equal(rule.enabled, true);
+  flow.activeVariantId = 'default';
+  assert.deepEqual(await callApi('qa'), [422, rule.response.body]);
+  assert.ok(serverError.overrides[rule.id].enabled === false);
   await interceptor.stop();
+  assert.equal(await banner.count(), 0);
 });

@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <meta http-equiv="Content-Security-Policy" content="@@CSP@@">
   <title>Mockend</title>
+  <script src="@@ROOT@@/ui/theme-init.js" nonce="@@NONCE@@"></script>
   <link rel="stylesheet" href="@@ROOT@@/ui/styles.css">
 </head>
 <body>
@@ -67,6 +69,7 @@
           <button class="secondary" id="cancel-scenario" type="button">Cancel</button>
           <button class="primary" type="submit">Save</button>
         </form>
+        <div class="response-scenario-tools"><label id="response-scenario-label">Scenario</label><button id="response-scenario" class="secondary value-dropdown http-status-toggle" type="button" aria-labelledby="response-scenario-label response-scenario-name" aria-controls="response-scenario-menu"><span id="response-scenario-name">Default</span></button><div id="response-scenario-menu" class="scope-menu" popover aria-label="Response scenarios"><div id="response-scenario-options"></div><button id="new-response-scenario" class="secondary" type="button">+ New scenario</button></div></div>
         <p id="scenario-error" class="feedback error" role="alert" hidden></p>
         <span id="scenario-file-status" role="status" aria-atomic="true"></span>
         <input type="file" id="import-file" accept=".json,.js,.cjs,application/json" hidden>
@@ -79,10 +82,7 @@
       <div class="section-head rules-head">
         <div class="section-title-line"><h2 id="rules-title" class="section-title">Rules</h2><span id="rule-count" class="section-count"></span></div>
         <div id="rules-url-selectors" class="url-selectors"></div>
-        <div class="mock-split" role="group" aria-label="Enable or disable mocks">
-          <button class="secondary" id="toggle-filtered-mocks" type="button" aria-pressed="false" disabled>Enable filtered mocks</button>
-          <button class="secondary" id="toggle-all-mocks" type="button" aria-pressed="false" data-tooltip="Enable or disable every mock in the active Flow, including filtered rows" disabled>Enable all mocks</button>
-        </div>
+        <button id="toggle-filtered-mocks" class="secondary" type="button" aria-controls="bulk-mock-menu" aria-expanded="false" disabled>Enable filtered (0)</button><div id="bulk-mock-menu" class="scope-menu" popover aria-label="Bulk mock actions"></div>
         <button class="secondary" id="clear-rules" type="button" disabled>Clear</button>
         <button class="primary" id="add-rule" type="button" disabled>+ Add rule</button>
       </div>
@@ -107,11 +107,12 @@
     </div>
       <p id="rules-request-query-error" class="feedback error" role="status" hidden></p>
       <div class="request-table rules-table" tabindex="0" role="region" aria-label="Rules table">
-        <table><thead><tr><th scope="col"><button type="button" data-rule-sort="id">ID<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="name">Name<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="method">Method<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="base">Base URL / Path<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="endpoint">Endpoint<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="type">Type<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="status">Status<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="delay">Delay (ms)<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="environmentLabel">Env<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="enabled">Enabled<span aria-hidden="true"></span></button></th></tr></thead><tbody id="rules"></tbody>      <tbody id="no-rules" hidden><tr><td colspan="10"><div class="table-empty">
+        <table><thead><tr><th scope="col"><button type="button" data-rule-sort="id">ID<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="name">Name<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="method">Method<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="base">Base URL / Path<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="endpoint">Endpoint<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="type">Type<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="status">Status<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="delay">Delay (ms)<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="environmentLabel">Env<span aria-hidden="true"></span></button></th><th scope="col"><button type="button" data-rule-sort="enabled">Mock<span aria-hidden="true"></span></button></th></tr></thead><tbody id="rules"></tbody>      <tbody id="no-rules" hidden><tr><td colspan="10"><div class="table-empty">
         <h3 id="empty-rules-title">No rules for this site</h3>
         <p>Add a URL and JSON response to start testing.</p>
       </div></td></tr></tbody></table>
       </div>
+      <p id="mock-state-summary" class="mock-state-summary" role="status"></p>
 
     </section>
 
@@ -132,12 +133,8 @@
             </div>
             <p id="environment-empty">Create an environment to group your API base URLs.</p>
             <form id="environment-form" aria-label="Environment details" novalidate hidden>
-              <label for="environment-name">Env name (required)</label><input id="environment-name" name="environmentName" maxlength="100" required placeholder="e.g. QA">
-              <div id="environment-initial-url">
-                <label for="environment-service">Service name (optional)</label><input id="environment-service" name="service" maxlength="100" placeholder="e.g. Accounts">
-                <label for="environment-base-url">Base URL (required)</label><input id="environment-base-url" name="baseUrls" type="url" maxlength="2048" required placeholder="https://api.qa.example.com" inputmode="url" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="environment-origin-help">
-                <small id="environment-origin-help">One HTTP(S) origin, including its port if needed. Keep paths on the rule.</small>
-              </div>
+              <table class="environment-draft-record"><thead><tr><th scope="col"><label for="environment-name">Env name (required)</label></th></tr></thead><tbody><tr><td><input id="environment-name" name="environmentName" maxlength="100" required placeholder="e.g. QA"></td></tr></tbody></table>
+              <div id="environment-initial-url"><table class="environment-draft-record"><thead><tr><th scope="col"><label for="environment-service">Service name (optional)</label></th><th scope="col"><label for="environment-base-url">Base URL (required)</label></th></tr></thead><tbody><tr><td><input id="environment-service" name="service" maxlength="100" placeholder="e.g. Accounts"></td><td><input id="environment-base-url" name="baseUrls" type="text" maxlength="2048" required placeholder="https://api.qa.example.com" inputmode="url" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="environment-origin-help"></td></tr></tbody></table><small id="environment-origin-help">One HTTP(S) origin, including its port if needed. Keep paths on the rule.</small></div>
               <p id="environment-capture-preview" hidden></p>
               <div class="environment-form-actions"><button id="cancel-environment" class="secondary" type="button">Cancel</button><button class="primary" type="submit">Save Env</button></div>
             </form>
@@ -148,7 +145,7 @@
               </div>
               <form id="environment-url-form" aria-label="Base URL details" novalidate hidden>
                 <div><label for="environment-url-service">Service name (optional)</label><input id="environment-url-service" name="service" maxlength="100" placeholder="e.g. Inventory"></div>
-                <div><label for="environment-url-origin">Base URL (required)</label><input id="environment-url-origin" name="origin" type="url" maxlength="2048" required placeholder="https://inventory.qa.example.com" inputmode="url" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="environment-url-help"></div>
+                <div><label for="environment-url-origin">Base URL (required)</label><input id="environment-url-origin" name="origin" type="text" maxlength="2048" required placeholder="https://inventory.qa.example.com" inputmode="url" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="environment-url-help"></div>
                 <div class="environment-form-actions"><button id="cancel-environment-url" class="secondary" type="button">Cancel</button><button id="save-environment-url" class="primary" type="submit">Add URL</button></div>
                 <small id="environment-url-help">HTTP(S) origin only. Keep at least one base URL per Env.</small>
               </form>
@@ -156,6 +153,10 @@
           </section>
         </div>
         <p id="environment-feedback" class="feedback" role="status" hidden></p>
+      </section>
+      <section class="settings-group" aria-labelledby="appearance-title">
+        <h3 id="appearance-title">Appearance</h3>
+        <label for="color-scheme">Theme<select id="color-scheme"><button type="button"><selectedcontent></selectedcontent></button><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       </section>
       <section id="browser-shortcut-settings" class="settings-group" aria-labelledby="browser-shortcut-title" hidden>
         <h3 id="browser-shortcut-title">Open Mockend shortcut</h3>
@@ -177,28 +178,24 @@
   <dialog id="rule-dialog" closedby="closerequest" aria-labelledby="rule-title">
     <form id="rule-form" novalidate>
       <div class="dialog-head rule-superheader">
-        <h2 id="rule-title">Add rule</h2>
-        <span class="rule-header-divider" aria-hidden="true"></span>
-        <label class="sr-only" for="rule-name">Rule name</label>
-        <input id="rule-name" name="name" maxlength="100" required placeholder="Request name">
-        <button class="rule-name-pencil" id="edit-rule-name" type="button" aria-label="Edit request name" title="Edit request name"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 10-.75 3.75L6 13 13 6 10 3l-7 7Zm5.5-5.5 3 3"/></svg></button>
-        <span id="rule-scenario-name" class="rule-scenario-name"></span>
+        <h2 id="rule-title">Add rule</h2><span class="rule-header-divider" aria-hidden="true"></span>
+        <div class="route-method"><label class="sr-only" for="rule-method">Method</label><select id="rule-method" name="method"><button type="button"><selectedcontent></selectedcontent></button></select></div>
+        <div class="rule-name-field"><label class="sr-only" for="rule-name">Rule name</label><input id="rule-name" name="name" maxlength="100" required placeholder="Request name"><small id="rule-full-path" class="rule-full-path mono"></small></div>
+        <span id="rule-scenario-name" class="rule-scenario-name"></span><label class="rule-resource"><span class="sr-only">Request type</span><select name="resource"><button type="button"><selectedcontent></selectedcontent></button><option value="api">Fetch/XHR</option><option value="any">Any HTTP request</option></select></label><button id="close-rule" class="secondary icon close" type="button" aria-label="Close rule editor"></button>
       </div>
       <div class="rule-route">
         <div class="route-fields">
-          <div><label class="sr-only" for="rule-method">Method</label><select id="rule-method" name="method"><button type="button"><selectedcontent></selectedcontent></button></select></div>
-          <div><label class="sr-only" for="rule-url">Request URL</label><input id="rule-url" name="url" required maxlength="2048" class="mono" placeholder="/api/cart or paste a full URL" spellcheck="false"></div>
-          <label><span class="sr-only">URL matching</span><select name="urlMode" aria-describedby="url-match-help"><button type="button"><selectedcontent></selectedcontent></button><option value="pattern">Pattern</option><option value="exact">Exact URL + query</option><option value="endpoint">Endpoint only</option></select></label>
-          <label><span class="sr-only">Request type</span><select name="resource"><button type="button"><selectedcontent></selectedcontent></button><option value="api">Fetch/XHR</option><option value="any">Any HTTP request</option></select></label>
-        </div>
-        <small id="url-match-help"></small>
-        <div class="rule-url-parts rule-environment-controls" aria-label="Env and URL parts">
+
+          <div id="rule-base-fields" class="rule-base-fields" role="region" aria-label="Env base URLs"></div>
+          <div class="route-path"><label for="rule-path">Path</label><input id="rule-path" name="pathPrefix" class="mono" maxlength="2048" placeholder="/api" spellcheck="false"></div>
+          <div class="route-endpoint"><label for="rule-url"><span id="rule-url-label">Endpoint</span></label><input id="rule-url" name="url" aria-label="Request URL / Endpoint" required maxlength="2048" class="mono" placeholder="/api/cart or paste a full URL" spellcheck="false"><output id="rule-endpoint-value" hidden></output></div>
           <div class="rule-env-field"><label id="rule-env-label" for="rule-environment-scope">Env</label><button name="environmentScope" id="rule-environment-scope" type="button" class="secondary value-dropdown" value="all" aria-labelledby="rule-env-label rule-environment-value" aria-controls="rule-environment-options" aria-expanded="false"><span id="rule-environment-value">Select all</span></button></div>
-          <div><span>Base URL</span><strong id="rule-base-preview"></strong></div>
-          <div><span>Path</span><strong id="rule-ingress-preview"></strong></div>
-          <div><span>Endpoint</span><strong id="rule-endpoint-preview"></strong></div>
+          <label class="rule-active-field">Active<input id="rule-enabled" name="enabled" type="checkbox" role="switch" checked></label>
         </div>
+        <details class="route-advanced"><summary>Matching</summary>          <label class="route-match"><span aria-hidden="true">Match</span><span class="sr-only">URL matching</span><select name="urlMode" aria-describedby="url-match-help"><button type="button"><selectedcontent></selectedcontent></button><option value="endpoint">Endpoint</option><option value="path">Full path</option><option value="exact">Exact URL</option><option value="pattern">Pattern</option></select></label><label id="rule-match-url" hidden><span id="advanced-url-label">URL</span></label><small>Matching conditions are shared by response scenarios.</small></details>
+        <small id="url-match-help" class="sr-only"></small>
         <div id="rule-environment-options" class="scope-menu rule-env-menu" role="group" aria-label="Rule Envs" popover></div>
+        <div class="sr-only"><strong id="rule-base-preview"></strong><strong id="rule-ingress-preview"></strong><strong id="rule-endpoint-preview"></strong></div>
         <small id="rule-environment-preview" class="sr-only"></small>
       </div>
       <div class="tabs workspace-tabs" id="rule-tabs" role="tablist" aria-label="Mock rule sections">
@@ -211,7 +208,7 @@
           <p id="captured-response-notice" class="capture-response-notice" hidden></p>
           <div class="field-heading">
             <div class="response-controls">
-              <label><span class="sr-only">Response type</span><select name="kind"><button type="button"><selectedcontent></selectedcontent></button><option value="json">JSON response</option><option value="text">Text response</option><option value="error">Network error</option></select></label>
+              <div class="response-format-field"><span id="response-format-label">Response type</span><div id="response-format" class="choice-group" role="radiogroup" aria-labelledby="response-format-label"><label><input type="radio" name="responseFormat" value="json" checked>JSON</label><label><input type="radio" name="responseFormat" value="text">Text</label><label><input type="radio" name="responseFormat" value="html">HTML</label><label><input type="radio" name="responseFormat" value="empty">Empty</label><label><input type="radio" name="responseFormat" value="error">Error</label></div><select name="kind" hidden aria-hidden="true" tabindex="-1"><option value="json">JSON response</option><option value="text">Text response</option><option value="error">Network error</option></select></div>
               <div id="status-field">
                 <label id="http-status-label" for="response-status-toggle">HTTP status</label>
                 <button class="secondary http-status-toggle" id="response-status-toggle" type="button" aria-labelledby="http-status-label http-status-value" aria-controls="http-status-options" aria-expanded="false" aria-haspopup="listbox" popovertarget="http-status-menu"><span id="http-status-value">200 OK</span></button>
@@ -224,13 +221,15 @@
                   <small>Enter a code and optional name, e.g. 599 Maintenance.</small>
                 </div>
               </div>
-              <label id="error-field" hidden>Failure <select name="error"><button type="button"><selectedcontent></selectedcontent></button></select></label>
+
               <div><label for="response-delay">Delay (ms)</label><input id="response-delay" name="delayMs" type="number" min="0" max="30000" step="1" required></div>
             </div>
           </div>
+          <label id="error-field" hidden>Failure <select name="error"><button type="button"><selectedcontent></selectedcontent></button></select></label>
           <div id="body-field"><label id="body-label" class="sr-only" for="response-body">Response JSON</label><textarea id="response-body" name="body" class="mono" rows="6" spellcheck="false"></textarea></div>
         </section>
         <section id="request-json-section" class="rule-section" role="tabpanel" aria-labelledby="rule-request-tab" hidden>
+
           <div class="field-heading">
             <div class="choice-group" role="radiogroup" aria-label="JSON matching">
               <label><input type="radio" name="requestBodyMode" value="parameters" checked>Parameters</label>
@@ -239,19 +238,21 @@
             </div>
           </div>
           <div id="parameter-editor">
-            <small>Match values in the query string or JSON body. AND requires both conditions. OR starts an alternative group.</small>
+            <div class="matching-heading"><h3>Matching conditions</h3><button id="paste-parameter-example" class="primary" type="button">Paste example JSON</button></div>
             <details id="parameter-example-panel">
-              <summary>Example request JSON</summary>
-              <small>Paste JSON to populate the field picker.</small>
+              <summary class="sr-only">Example request JSON</summary>
               <label class="sr-only" for="parameter-example">Example request JSON</label>
-              <textarea id="parameter-example" name="parameterExample" class="mono" rows="4" spellcheck="false" placeholder='{"customer":{"id":7}}'></textarea>
+              <textarea id="parameter-example" name="parameterExample" class="mono" rows="6" spellcheck="false" placeholder='{"status":"pending","page":1}'></textarea>
+              <div class="example-actions"><small id="example-condition-preview">Paste JSON to generate matching conditions.</small><button id="apply-parameter-example" class="secondary" type="button" disabled>Done</button></div>
               <p id="parameter-example-error" role="status" hidden></p>
             </details>
+            <div class="parameter-columns" aria-hidden="true"><span></span><span>Source</span><span>Field</span><span>Operator</span><span>Value</span><span></span></div>
             <div id="parameter-rows"></div>
             <button id="add-parameter" class="secondary" type="button">+ Add parameter</button>
             <p id="parameter-error" class="error" role="status" hidden></p>
           </div>
           <div id="request-json-editor" hidden>
+<div class="matching-heading"><h3>Matching JSON</h3><button id="paste-exact-example" class="secondary" type="button">Paste example JSON</button></div>
             <small id="json-help">Compare the full JSON body. Leave empty to match any body.</small>
             <label class="sr-only" for="request-json">Request JSON</label>
             <textarea id="request-json" name="requestBody" class="mono" rows="4" aria-describedby="json-help" spellcheck="false" placeholder="Request JSON"></textarea>
@@ -298,12 +299,12 @@
     <div class="dialog-body app-manager-workspace">
       <div id="managed-application" class="app-profile-list" role="group" aria-label="Apps" tabindex="-1"></div>
       <section class="environment-detail app-profile-detail" aria-labelledby="managed-app-name">
-        <h3 id="managed-app-name"></h3><p id="managed-app-summary"></p>
-        <div class="app-management-actions"><button class="secondary" type="button" data-application-action="@rename">Rename app</button><button class="secondary" type="button" data-application-action="@merge">Merge app</button><button class="secondary" type="button" data-application-action="@split">Split Envs into app</button></div>
+        <div class="app-profile-heading"><h3 id="managed-app-name"></h3><div class="app-management-actions"><button id="rename-application" class="secondary" type="button" aria-label="Rename app" data-application-action="@rename">Rename app</button><button id="merge-application" class="secondary" type="button" data-application-action="@merge">Merge app</button><button id="split-application" class="secondary" type="button" data-application-action="@split">Split Envs into app</button></div></div><p id="managed-app-summary"></p>
       </section>
     </div>
     <div class="dialog-foot"><div class="app-transfer-actions"><button class="secondary" type="button" data-application-action="@export">Export all apps</button><button class="secondary" type="button" data-application-action="@import">Import apps</button></div><button class="primary" type="button" id="done-app-manager">Done</button></div>
   </dialog>
+  <dialog id="response-scenario-dialog" aria-labelledby="response-scenario-title"><form id="response-scenario-form"><div class="dialog-head"><h2 id="response-scenario-title">New scenario</h2></div><div class="dialog-body"><label for="response-scenario-input">Scenario name<input id="response-scenario-input" name="variantName" required maxlength="100" autocomplete="off"></label></div><div class="dialog-foot"><button id="cancel-response-scenario" class="secondary" type="button">Cancel</button><button class="primary" type="submit">Save scenario</button></div></form></dialog>
   <dialog id="application-dialog" aria-labelledby="application-title">
     <form id="application-form" aria-labelledby="application-title">
       <div class="dialog-head"><h2 id="application-title">New app</h2></div>

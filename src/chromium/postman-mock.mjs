@@ -1,9 +1,12 @@
+import { effectiveRules } from '../core/variants.mjs';
 import { MAX_RESPONSE_BYTES, validateConfig, validateHeaders } from '../core/config.mjs';
 import { portableMatcherSource, ruleUrls } from '../core/matcher.mjs';
 
 const scenarioPrefix = 'const mockendScenario = JSON.parse(';
 
 export function postmanMockScript(scenario, config = {}) {
+  const { variants, activeVariantId, ...shared } = scenario;
+  scenario = { ...shared, rules: effectiveRules(scenario) };
   // Standalone exports freeze the currently resolved environment targets.
   const ids = new Set(scenario.rules.map(rule => rule.id));
   let nextId = 1;
@@ -37,7 +40,7 @@ const routes = mockendScenario.rules.map(rule => {
   const parts = /^((?:https?|\\*):\\/\\/[^/?]+)(.*)$/.exec(rule.url);
   return {
     authority: parts?.[1],
-    rule: { ...rule, resource: 'any', url: parts ? mockOrigin + (parts[2] || '/') : rule.url }
+    rule: { ...rule, resource: 'any', url: parts ? mockOrigin + (parts[2] || '/') : rule.url, ...(rule.endpointOrigin && { endpointOrigin: rule.endpointOrigin === parts?.[1] ? mockOrigin : undefined }) }
   };
 });
 
@@ -71,9 +74,9 @@ const server = http.createServer(async (req, res) => {
     const request = { method: req.method, url: mockOrigin + incoming.pathname + incoming.search, headers: headersIn };
     let bodyRead;
     const match = await selectRule(rules, { resourceType: 'Fetch', request }, () => bodyRead ??= requestBody(req));
-    if (!match) {
+    if (!match || match.conflict) {
       res.writeHead(404, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'No Mockend rule matched' }));
+      res.end(JSON.stringify({ error: match?.conflict ?? 'No Mockend rule matched' }));
       return;
     }
     if (!match.preflight && match.rule.response.delayMs) {

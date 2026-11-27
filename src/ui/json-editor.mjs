@@ -1,3 +1,4 @@
+import { codeLanguage, formatStructured, renderSyntax } from './code-format.mjs';
 import { toast } from './toasts.mjs';
 
 const tokens = /"(?:\\[\s\S]|[^"\\])*(?:"|$)|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\],:]|\s+|[^\s]/g;
@@ -120,7 +121,31 @@ function mountCodePane(viewport, read, write, input) {
   const projection = input ? document.createElement('pre') : viewport;
   const edit = input ? document.createElement('button') : null;
   viewport.before(frame);
-  frame.append(viewport, gutter, controls, copy);
+  const actions = document.createElement('div'); actions.className = 'code-actions';
+  const expand = document.createElement('button'); expand.type = 'button'; expand.className = 'code-expand';
+  expand.setAttribute('aria-label', 'Expand editor'); expand.title = 'Expand editor';
+  const expandIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); expandIcon.setAttribute('viewBox', '0 0 24 24'); expandIcon.setAttribute('aria-hidden', 'true');
+  const expandPath = document.createElementNS(expandIcon.namespaceURI, 'path'); expandPath.setAttribute('d', 'M8 3H3v5m0-5 7 7m6-7h5v5m0-5-7 7M3 16v5h5m-5 0 7-7m6 7h5v-5m0 5-7-7'); expandIcon.append(expandPath); expand.append(expandIcon);
+  actions.append(copy, expand);
+  frame.append(viewport, gutter, controls, actions);
+  expand.addEventListener('click', () => {
+    collapsed.clear(); render();
+    const marker = document.createComment('expanded editor'); frame.before(marker);
+    const originalForm = input?.form; const originalOwner = input?.getAttribute('form');
+    if (originalForm?.id) input.setAttribute('form', originalForm.id);
+    const dialog = document.createElement('dialog'); dialog.className = 'expanded-code-dialog';
+    dialog.setAttribute('aria-label', 'Expanded code editor'); document.body.append(dialog); dialog.append(frame);
+    const collapse = document.createElement('button'); collapse.type = 'button'; collapse.className = 'code-collapse'; collapse.textContent = 'Close'; collapse.setAttribute('aria-label', 'Close expanded editor');
+    expand.hidden = true; actions.append(collapse);
+    const close = () => dialog.close(); collapse.addEventListener('click', close);
+    dialog.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } });
+    dialog.addEventListener('close', () => {
+      marker.replaceWith(frame); collapse.remove(); expand.hidden = false;
+      if (input) { if (originalOwner === null) input.removeAttribute('form'); else input.setAttribute('form', originalOwner); }
+      dialog.remove(); expand.focus({ preventScroll: true });
+    }, { once: true });
+    dialog.showModal(); (input?.hidden ? projection : input ?? viewport).focus();
+  });
   if (input) {
     projection.className = 'code-viewport folded-code';
     projection.tabIndex = 0;
@@ -136,6 +161,7 @@ function mountCodePane(viewport, read, write, input) {
   let folds = new Map();
   let collapsed = new Set();
   let highlight = false;
+  let language = 'text';
   let autoPending = false;
   const scroller = () => input?.hidden ? projection : viewport;
   const syncScroll = () => { gutter.scrollTop = controls.scrollTop = scroller().scrollTop; };
@@ -186,7 +212,7 @@ function mountCodePane(viewport, read, write, input) {
         const tail = document.createDocumentFragment();
         renderJson(tail, source);
         projection.replaceChildren(parts, tail);
-      } else if (highlight) renderJson(projection, lines.join('\n'));
+      } else if (highlight) { if (language === 'json') renderJson(projection, lines.join('\n')); else renderSyntax(projection, lines.join('\n'), language); }
       else projection.textContent = lines.join('\n');
     }
     controls.replaceChildren(...rows.flatMap(({ line, fold, closed }, index) => {
@@ -221,8 +247,9 @@ function mountCodePane(viewport, read, write, input) {
 
   function setContent(text, json, auto = false) {
     lines = text.split(/\r\n?|\n/);
-    highlight = json;
-    folds = json ? jsonFolds(lines.join('\n')) : new Map();
+    language = codeLanguage(text, json);
+    highlight = language !== 'text';
+    folds = language === 'json' ? jsonFolds(lines.join('\n')) : new Map();
     collapsed = new Set();
     autoPending = auto;
     render();
@@ -237,9 +264,10 @@ function mountCodePane(viewport, read, write, input) {
   if (input) {
     new ResizeObserver(foldToFit).observe(frame);
   }
-  return { frame, copy, setContent };
+  return { frame, copy, actions, setContent };
 }
 
+/** Mount a read-only code view with shared copy, folding, and expansion controls. */
 export function mountCodePreview(output, label, write) {
   let content;
   const { copy, setContent } = mountCodePane(output, () => content, write);
@@ -250,21 +278,24 @@ export function mountCodePreview(output, label, write) {
     let json = false;
     if (value) {
       try {
-        content = JSON.stringify(JSON.parse(value), null, 2);
+        JSON.parse(value);
+        content = format(value, 0, 0)[0];
         json = true;
       } catch { /* Keep the captured text verbatim. */ }
     }
     copy.disabled = value === undefined;
     copy.textContent = 'Copy';
-    setContent(content || (value === undefined ? placeholder : '(empty)'), json, true);
+    setContent(content || (value === undefined ? placeholder : '(empty)'), json ? 'json' : codeLanguage(content ?? '', 'auto'), true);
     output.scrollTop = 0;
     output.scrollLeft = 0;
   };
 }
 
-export function mountJsonEditor(input, isJson = () => true, { formatOnInput = true } = {}) {
-  const { frame, copy, setContent } = mountCodePane(input, () => input.value, undefined, input);
+/** Mount the shared structured editor; refresh after programmatic changes, and format only on paste/blur or explicit action. */
+export function mountJsonEditor(input, isJson = () => true, { formatOnInput = false, write } = {}) {
+  const { frame, copy, actions, setContent } = mountCodePane(input, () => input.value, write, input);
   frame.classList.add('json-editor');
+  frame.style.setProperty('--editor-rows', input.id === 'response-body' ? 10 : input.rows || 6);
   input.classList.add('code-viewport');
   input.wrap = 'off';
   const preview = document.createElement('pre');
@@ -276,16 +307,47 @@ export function mountJsonEditor(input, isJson = () => true, { formatOnInput = tr
     preview.scrollTop = input.scrollTop;
     preview.scrollLeft = input.scrollLeft;
   }
+  const language = () => codeLanguage(input.value, isJson());
   function refresh(auto = false) {
     copy.setAttribute('aria-label', 'Copy ' + (input.labels?.[0]?.textContent.trim() || 'JSON'));
-    frame.classList.toggle('json-highlight', isJson());
-    if (isJson()) renderJson(preview, input.value, '\n');
-    setContent(input.value, isJson(), auto);
+    const mode = language();
+    frame.classList.toggle('json-highlight', mode !== 'text');
+    if (mode === 'json') renderJson(preview, input.value, '\n');
+    else if (mode !== 'text') renderSyntax(preview, input.value, mode, '\n');
+    setContent(input.value, mode, auto);
+    formatButton.disabled = mode === 'text';
     syncScroll();
   }
   input.addEventListener('scroll', syncScroll);
+  const formatButton = document.createElement('button'); formatButton.type = 'button'; formatButton.className = 'code-format'; formatButton.textContent = 'Format'; formatButton.setAttribute('aria-label', 'Format code');
+  actions.prepend(formatButton);
+  formatButton.addEventListener('click', async () => {
+    const before = input.value; formatButton.disabled = true;
+    try {
+      if (language() === 'json') { JSON.parse(before); reformat(); }
+      else {
+        const formatted = await formatStructured(before, language());
+        if (input.value !== before) return;
+        const top = input.scrollTop; const left = input.scrollLeft;
+        input.value = formatted; input.scrollTop = top; input.scrollLeft = left;
+      }
+      input.dispatchEvent(new Event('input', { bubbles: true })); refresh();
+    } catch (error) { toast(error.message || 'Invalid code was left unchanged.', { key: 'code-format', error: true }); }
+    finally { formatButton.disabled = language() === 'text'; }
+  });
+  input.addEventListener('paste', () => setTimeout(() => { if (language() === 'json') { reformat(); refresh(); input.dispatchEvent(new Event('input', { bubbles: true })); } }, 0));
+  input.addEventListener('keydown', event => {
+    if (event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey || !['[', ']'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === ']') input.setRangeText('  ', input.selectionStart, input.selectionEnd, 'end');
+    else {
+      const start = input.value.lastIndexOf('\n', input.selectionStart - 1) + 1;
+      if (input.value.slice(start, start + 2) === '  ') input.setRangeText('', start, start + 2, 'preserve');
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   function reformat() {
-    if (!formatOnInput || !isJson() || !input.value.trim()) return;
+    if (language() !== 'json' || !input.value.trim()) return;
     try { JSON.parse(input.value); } catch { return; }
     const [value, start, end] = format(input.value, input.selectionStart, input.selectionEnd);
     if (value !== input.value) {
@@ -300,10 +362,10 @@ export function mountJsonEditor(input, isJson = () => true, { formatOnInput = tr
   input.addEventListener('input', event => {
     if (!input.value.includes('\n')) preserveLineBreaks = false;
     if (event.inputType === 'insertLineBreak' || event.inputType === 'insertParagraph') preserveLineBreaks = true;
-    if (!preserveLineBreaks && !event.isComposing && !/^\s+$/.test(event.data ?? '') && !event.inputType?.startsWith('delete')) reformat();
+    if (formatOnInput && !preserveLineBreaks && !event.isComposing && !/^\s+$/.test(event.data ?? '') && !event.inputType?.startsWith('delete')) reformat();
     refresh();
   });
-  input.addEventListener('compositionend', () => { if (!preserveLineBreaks) reformat(); refresh(); });
+  input.addEventListener('compositionend', () => { if (formatOnInput && !preserveLineBreaks) reformat(); refresh(); });
   input.addEventListener('blur', event => {
     if (input.hidden || event.relatedTarget?.classList.contains('code-fold')) return;
     preserveLineBreaks = false;

@@ -1,3 +1,4 @@
+import { parametersFromExample } from '../src/core/parameter-examples.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { starterConfig, validateConfig } from '../src/core/config.mjs';
@@ -246,4 +247,100 @@ test('VS Code WebSocket transport sends CDP messages and routes session events',
   } finally {
     globalThis.WebSocket = NativeSocket;
   }
+});
+
+test('example JSON generates typed leaf conditions with escaped pointers', () => {
+  assert.deepEqual(parametersFromExample('{"status":"pending","page":1,"a/b":{"~key":[true,null]}}'), [
+    { source: 'body', key: '/status', value: 'pending' },
+    { source: 'body', key: '/page', value: 1 },
+    { source: 'body', key: '/a~1b/~0key/0', value: true },
+    { source: 'body', key: '/a~1b/~0key/1', value: null }
+  ])
+})
+
+test('example JSON rejects invalid shapes and more than 30 conditions', () => {
+  for (const text of ['{', 'null', '1', '{}']) assert.throws(() => parametersFromExample(text))
+  assert.equal(parametersFromExample(JSON.stringify(Array(30).fill(1))).length, 30)
+  assert.throws(() => parametersFromExample(JSON.stringify(Array(31).fill(1))), /30/)
+})
+
+
+test('explicit matching modes separate final endpoints, complete paths, exact origins and patterns', async () => {
+  const config = starterConfig();
+  config.environments = [{ id: 'qa', name: 'QA', baseUrls: ['https://qa.test'] }, { id: 'prod', name: 'PROD', baseUrls: ['https://prod.test'] }];
+  config.settings.environmentId = 'qa';
+  const source = { ...structuredClone(config.scenarios[0].rules[0]), id: 'endpoint', method: 'GET', resource: 'api', url: '/users', matchMode: 'endpoint', environmentScope: 'selected', environmentIds: ['qa'] };
+  delete source.exactUrl; delete source.endpointOnly; delete source.requestBody; delete source.requestBodyMode;
+  config.scenarios[0].rules = [source];
+  const event = (url, method = 'GET') => ({ resourceType: 'Fetch', request: { url, method, headers: {} } });
+  assert.equal((await selectRule([source], event('https://qa.test/v1/users?active=1'), () => '', config)).rule.id, 'endpoint');
+  assert.equal(await selectRule([source], event('https://prod.test/v1/users'), () => '', config), null);
+  assert.equal(await selectRule([source], event('https://qa.test/v1/users', 'POST'), () => '', config), null);
+  const path = { ...source, matchMode: 'path', url: '/v1/users' };
+  assert.ok(await selectRule([path], event('https://qa.test/v1/users?any=query'), () => '', config));
+  assert.equal(await selectRule([path], event('https://qa.test/v2/users'), () => '', config), null);
+  const legacy = { ...path, endpointOnly: true }; delete legacy.matchMode;
+  assert.equal(await selectRule([legacy], event('https://qa.test/v2/users'), () => '', config), null);
+  const exact = { ...source, matchMode: 'exact', environmentScope: 'original', url: 'https://prod.test/v1/users?x=1&y=2' }; delete exact.environmentIds;
+  assert.ok(await selectRule([exact], event('https://prod.test/v1/users?y=2&x=1'), () => '', config));
+  assert.equal(await selectRule([exact], event('https://qa.test/v1/users?x=1&y=2'), () => '', config), null);
+  assert.equal(await selectRule([exact], event('https://prod.test/v1/users?x=1'), () => '', config), null);
+  const pattern = { ...source, matchMode: 'pattern', url: '/v*/users*' };
+  assert.ok(await selectRule([pattern], event('https://qa.test/v2/users?active=1'), () => '', config));
+  config.scenarios[0].rules = [source, path, exact, pattern].map((rule, index) => ({ ...rule, id: `mode-${index}` }));
+  assert.doesNotThrow(() => validateConfig(config));
+});
+
+test('endpoint ambiguity warns without matching unrelated paths and preserves request predicates', async () => {
+  const config = starterConfig();
+  config.environments = [{ id: 'qa', name: 'QA', baseUrls: ['https://qa.test'] }]; config.settings.environmentId = 'qa';
+  const rule = { ...structuredClone(config.scenarios[0].rules[0]), id: 'users', url: '/accounts/users', method: 'POST', resource: 'api', matchMode: 'endpoint', endpointPath: '/accounts/users', environmentScope: 'all', parameters: [{ source: 'body', key: '/id', value: 7 }] };
+  delete rule.exactUrl; delete rule.endpointOnly; delete rule.requestBody; delete rule.requestBodyMode;
+  config.scenarios[0].rules = [rule];
+  const event = path => ({ resourceType: 'XHR', request: { method: 'POST', url: 'https://qa.test' + path, headers: {} } });
+  assert.ok((await selectRule([rule], event('/accounts/users'), () => '{"id":7}', config)).rule);
+  assert.equal(await selectRule([rule], event('/accounts/users'), () => '{"id":8}', config), null);
+  const conflict = await selectRule([rule], event('/orders/users'), () => '{"id":7}', config);
+  assert.match(conflict.conflict, /Endpoint conflict/);
+  assert.equal(conflict.rule, undefined);
+  assert.deepEqual(conflict.urls.sort(), ['https://qa.test/accounts/users', 'https://qa.test/orders/users']);
+  const independent = { ...rule, id: 'orders', matchMode: 'path', url: '/orders/users' }; delete independent.endpointPath;
+  config.scenarios[0].rules.push(independent);
+  assert.match((await selectRule(config.scenarios[0].rules, event('/accounts/users'), () => '{"id":7}', config)).conflict, /Full path/);
+  const narrowed = { ...rule, matchMode: 'path' }; delete narrowed.endpointPath;
+  assert.ok((await selectRule([narrowed, independent], event('/accounts/users'), () => '{"id":7}', config)).rule);
+});
+
+
+test('endpoint collision knowledge stays within its Env while other Envs can use different path prefixes', async () => {
+  const config = starterConfig();
+  config.environments = [{ id: 'qa', name: 'QA', baseUrls: ['https://qa.test'] }, { id: 'prod', name: 'PROD', baseUrls: ['https://prod.test'] }];
+  const rule = { ...structuredClone(config.scenarios[0].rules[1]), url: '/v1/users', method: 'GET', matchMode: 'endpoint', endpointPath: '/v1/users', endpointOrigin: 'https://qa.test', environmentScope: 'all' };
+  delete rule.exactUrl; delete rule.endpointOnly;
+  config.scenarios[0].rules = [rule];
+  const event = url => ({ resourceType: 'Fetch', request: { method: 'GET', url, headers: {} } });
+  assert.ok((await selectRule([rule], event('https://prod.test/v2/users'), () => '', config)).rule);
+  assert.match((await selectRule([rule], event('https://qa.test/unrelated/users'), () => '', config)).conflict, /Endpoint conflict/);
+  const routes = [{ method: 'GET', url: 'https://prod.test/v2/users' }];
+  assert.match((await selectRule([rule], event('https://prod.test/unrelated/users'), () => '', config, routes)).conflict, /Endpoint conflict/);
+  assert.doesNotThrow(() => validateConfig(config));
+});
+
+
+test('the live interceptor warns and forwards an ambiguous endpoint instead of fulfilling it', async () => {
+  const config = starterConfig();
+  config.environments = [{ id: 'qa', name: 'QA', baseUrls: ['https://qa.test'] }];
+  const rule = { ...structuredClone(config.scenarios[0].rules[1]), matchMode: 'endpoint', url: '/v1/users', endpointPath: '/v1/users', endpointOrigin: 'https://qa.test', environmentScope: 'all' };
+  delete rule.exactUrl; delete rule.endpointOnly;
+  config.scenarios[0].rules = [rule];
+  const calls = []; const activity = [];
+  const engine = new Interceptor({ send: async (method, params) => { calls.push({ method, params }); }, getConfig: () => config, onActivity: row => activity.push(row) });
+  await engine.start();
+  engine.event('Fetch.requestPaused', { requestId: 'ambiguous', resourceType: 'Fetch', request: { url: 'https://qa.test/unrelated/users', method: 'GET', headers: {} } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.filter(call => call.method === 'Fetch.continueRequest' && call.params.requestId === 'ambiguous').length, 1);
+  assert.equal(calls.some(call => call.method === 'Fetch.fulfillRequest'), false);
+  assert.ok(activity.some(row => row.outcome.startsWith('Endpoint conflict:')));
+  assert.match(engine.banner.warning, /Endpoint conflict/);
+  await engine.stop();
 });
